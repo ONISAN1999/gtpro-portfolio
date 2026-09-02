@@ -459,6 +459,10 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
         </div>
       </div>
 
+      <label for="f-img">รูปชาร์ต (ไม่ใส่ก็ได้)</label>
+      <input type="file" id="f-img" accept="image/*">
+      <div class="thumb" id="f-prev" hidden></div>
+
       <label for="f-note">โน้ต (ไม่ใส่ก็ได้)</label>
       <textarea id="f-note" placeholder="เช่น GTPro โซนล่าง + Bull"></textarea>
 
@@ -503,6 +507,8 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
     </div>
   </div>
 </div>
+
+<input type="file" id="pick-img" accept="image/*" hidden>
 
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="รูปชาร์ต">
   <button class="x" id="lbx" aria-label="ปิด">✕</button>
@@ -763,8 +769,10 @@ function renderOpen(){
       </div>
       <div class="act">
         <button class="prim" data-a="close">ปิดไม้</button>
+        <button data-a="img">${t.chart?'🖼 ดูรูป':'🖼 แนบรูป'}</button>
         <button class="danger" data-a="del">ลบ</button>
-      </div></div>`;
+      </div>
+      <div class="thumb" hidden></div></div>`;
   }).join('');
 }
 
@@ -818,7 +826,10 @@ function renderHist(){
         <span><b>ถือ</b> ${fmt(t.duration_min,0)} นาที</span>
       </div>
       ${t.note?`<div class="hint" style="margin-top:6px">${esc(t.note)}</div>`:''}
-      ${t.chart?`<button class="camera" data-img="${esc(t.chart)}" data-cap="${esc(t.symbol+' · '+(t.exit_time||''))}">🖼 ดูรูปชาร์ต</button>`:''}
+      <div class="act">
+        <button data-a="img">${t.chart?'🖼 ดูรูปชาร์ต':'🖼 แนบรูป'}</button>
+        ${t.chart?'<button data-a="re">เปลี่ยนรูป</button>':''}
+      </div>
       <div class="thumb" hidden></div>
     </div>`;
   }).join('');
@@ -826,22 +837,18 @@ function renderHist(){
 
 /* กดปุ่มรูป → โหลดครั้งแรกแล้วแสดงใต้ไม้ กดที่รูปเพื่อขยายเต็มจอ */
 $('#histList').onclick=async e=>{
-  const btn=e.target.closest('.camera');
-  if(btn){
-    const item=btn.closest('.hitem'), box=item.querySelector('.thumb');
-    if(!box.hidden){ box.hidden=true; btn.textContent='🖼 ดูรูปชาร์ต'; return; }
-    btn.disabled=true; btn.textContent='⏳ กำลังโหลดรูป…';
-    try{
-      const src=await apiImg(btn.dataset.img);
-      box.innerHTML=`<img src="${src}" alt="รูปชาร์ต ${esc(btn.dataset.cap)}"
-        data-cap="${esc(btn.dataset.cap)}">`;
-      box.hidden=false; btn.textContent='🖼 ซ่อนรูป';
-    }catch(err){
-      btn.textContent='🖼 โหลดรูปไม่สำเร็จ';
-      box.innerHTML=`<div class="err" style="margin:0">${esc(err.message)}</div>`;
-      box.hidden=false;
-    }finally{ btn.disabled=false; }
-    return;
+  const item=e.target.closest('.hitem');
+  if(item){
+    const t=(data.history||[]).find(x=>x.id===item.dataset.id);
+    if(t){
+      if(e.target.closest('[data-a="re"]')) return askImage(t.id);
+      const btn=e.target.closest('[data-a="img"]');
+      if(btn){
+        if(!t.chart) return askImage(t.id);
+        return toggleThumb(item.querySelector('.thumb'), btn, t.chart,
+                           t.symbol+' · '+(t.exit_time||''));
+      }
+    }
   }
   const img=e.target.closest('.thumb img');
   if(img){
@@ -862,6 +869,43 @@ function apiAct(params){
   const u = `${cfg.url}?api=1&key=${encodeURIComponent(cfg.key)}&${q}`;
   return fetch(u,{redirect:'follow'}).then(r=>r.json()).catch(()=>jsonp(u));
 }
+/* ── รูปชาร์ต: ย่อก่อนส่ง แล้ว POST ขึ้น Apps Script ─────────────── */
+const MAXPX = 1600;
+/* ย่อรูปด้วย canvas ก่อน จะได้ไม่ส่งไฟล์ 5 MB ผ่านเน็ตมือถือ */
+function shrink(file){
+  return new Promise((res,rej)=>{
+    const fr = new FileReader();
+    fr.onerror = () => rej(new Error('อ่านไฟล์รูปไม่ได้'));
+    fr.onload = () => {
+      const im = new Image();
+      im.onerror = () => rej(new Error('ไฟล์นี้ไม่ใช่รูปภาพ'));
+      im.onload = () => {
+        const k = Math.min(1, MAXPX/Math.max(im.width, im.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(im.width*k); c.height = Math.round(im.height*k);
+        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+        const url = c.toDataURL('image/jpeg', 0.82);
+        res({ dataUrl:url, b64:url.split(',')[1], mime:'image/jpeg',
+              kb: Math.round(url.length*0.75/1024) });
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+/* POST แบบ text/plain — เลี่ยง CORS preflight ที่ Apps Script ไม่รองรับ */
+async function apiUpload(tradeId, img){
+  const r = await fetch(cfg.url, {
+    method:'POST', redirect:'follow',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ act:'upload', key:cfg.key, id:tradeId,
+                           b64:img.b64, mime:img.mime })
+  });
+  const j = await r.json();
+  if(!j || j.ok===false) throw new Error((j&&j.error)||'อัปโหลดรูปไม่สำเร็จ');
+  return j;
+}
+
 /* input[type=datetime-local] → "yyyy-MM-dd HH:mm" ที่ฝั่ง Apps Script อ่านได้ */
 const dtOut = v => v ? v.replace('T',' ') : '';
 const dtNow = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset());
@@ -904,8 +948,21 @@ function showRR(){
 }
 ['f-price','f-tp','f-sl','f-lots','f-sym'].forEach(id => $('#'+id).oninput = showRR);
 
+let pendingImg = null;   /* รูปที่เลือกไว้ในฟอร์ม รอบันทึกพร้อมไม้ */
+$('#f-img').onchange = async e => {
+  const f = e.target.files[0];
+  if(!f){ pendingImg=null; $('#f-prev').hidden=true; return; }
+  try{
+    pendingImg = await shrink(f);
+    $('#f-prev').innerHTML = `<img src="${pendingImg.dataUrl}" alt="ตัวอย่างรูปชาร์ตที่เลือก">`;
+    $('#f-prev').hidden = false;
+    msg($('#f-msg'), `เลือกรูปแล้ว (ย่อเหลือ ~${fmt(pendingImg.kb,0)} KB) จะแนบให้ตอนกดบันทึก`, true);
+  }catch(err){ pendingImg=null; $('#f-prev').hidden=true; msg($('#f-msg'), err.message, false); }
+};
+
 function openAdd(){
   msgHide($('#f-msg'));
+  pendingImg = null; $('#f-img').value=''; $('#f-prev').hidden = true;
   $('#f-when').value = dtNow();
   if(!$('#f-lots').value) $('#f-lots').value = (data&&data.default_lots) || 0.01;
   if(!$('#f-sym').value){
@@ -942,12 +999,22 @@ $('#add-save').onclick = async () => {
     if(!r || r.ok===false) throw new Error((r&&r.error)||'บันทึกไม่สำเร็จ');
     if(r.status==='duplicate') msg(m,'ไม้นี้บันทึกไปแล้ว (ระบบกันซ้ำ)',false);
     else{
-      msg(m,'บันทึกแล้ว ✓ '+(r.result||''),true);
+      let extra = '';
+      if(pendingImg){
+        if(r.trade_id){
+          btn.textContent = 'กำลังอัปโหลดรูป…';
+          try{ await apiUpload(r.trade_id, pendingImg); extra = ' + แนบรูปแล้ว 🖼'; }
+          catch(err){ extra = ' (แต่แนบรูปไม่สำเร็จ: '+err.message+')'; }
+        }else{
+          extra = ' (ไม่ได้รหัสไม้กลับมา เลยยังไม่ได้แนบรูป — แนบทีหลังจากหน้าไม้เปิดได้)';
+        }
+      }
+      msg(m,'บันทึกแล้ว ✓ '+(r.result||'')+extra, !extra.includes('ไม่สำเร็จ'));
       ['f-price','f-tp','f-sl','f-note'].forEach(id=>$('#'+id).value='');
-      $('#f-rr').innerHTML='';
+      $('#f-rr').innerHTML=''; $('#f-img').value=''; $('#f-prev').hidden=true; pendingImg=null;
       if(getMode()!==mode){ mode=getMode(); }   // เพิ่งลงคนละกระเป๋า → สลับตาม
       await refresh();
-      setTimeout(closeAdd, 900);
+      setTimeout(closeAdd, 1100);
     }
   }catch(err){ msg(m,'ผิดพลาด: '+err.message,false); }
   finally{ btn.disabled=false; btn.textContent='บันทึกไม้'; }
@@ -998,15 +1065,59 @@ $('#cl-save').onclick = async () => {
   finally{ btn.disabled=false; btn.textContent='ปิดไม้นี้'; }
 };
 
+/* ── แนบรูปให้ไม้ที่บันทึกไปแล้ว (ใช้ได้ทั้งไม้เปิดและไม้ที่ปิดแล้ว) ── */
+let attachTo = null;
+function askImage(tradeId){ attachTo = tradeId; $('#pick-img').value=''; $('#pick-img').click(); }
+$('#pick-img').onchange = async e => {
+  const f = e.target.files[0]; if(!f || !attachTo) return;
+  const id = attachTo; attachTo = null;
+  const btn = document.querySelector(`[data-id="${CSS.escape(id)}"] [data-a="img"]`);
+  const old = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'กำลังย่อรูป…'; }
+  try{
+    const img = await shrink(f);
+    if(btn) btn.textContent = 'กำลังอัปโหลด…';
+    await apiUpload(id, img);
+    Object.keys(imgCache).forEach(k => delete imgCache[k]);  /* รูปเปลี่ยน ล้างแคช */
+    await refresh();
+  }catch(err){
+    if(btn){ btn.disabled=false; btn.textContent = old; }
+    alert('แนบรูปไม่สำเร็จ: ' + err.message);
+  }
+};
+
+/* กดดู/แนบรูป แล้วโชว์ใต้รายการ (ใช้ร่วมกันทั้งหน้าไม้เปิดและไม้เทรด) */
+async function toggleThumb(box, btn, driveId, cap){
+  if(!box.hidden){ box.hidden = true; btn.textContent = '🖼 ดูรูป'; return; }
+  btn.disabled = true; btn.textContent = '⏳ กำลังโหลด…';
+  try{
+    const src = await apiImg(driveId);
+    box.innerHTML = `<img src="${src}" alt="รูปชาร์ต ${esc(cap)}" data-cap="${esc(cap)}">`;
+    box.hidden = false; btn.textContent = '🖼 ซ่อนรูป';
+  }catch(err){
+    box.innerHTML = `<div class="err" style="margin:0">${esc(err.message)}</div>`;
+    box.hidden = false; btn.textContent = '🖼 โหลดไม่สำเร็จ';
+  }finally{ btn.disabled = false; }
+}
+
 $('#openList').onclick = async e => {
   const row = e.target.closest('.trade'); if(!row) return;
   const t = (data.open||[]).find(x=>x.id===row.dataset.id); if(!t) return;
+
   if(e.target.closest('[data-a="close"]')) return openClose(t);
+  if(e.target.closest('[data-a="img"]')){
+    const btn = e.target.closest('[data-a="img"]');
+    if(!t.chart) return askImage(t.id);
+    return toggleThumb(row.querySelector('.thumb'), btn, t.chart, t.symbol+' · '+t.entry_time);
+  }
   if(e.target.closest('[data-a="del"]')){
     if(!confirm('ลบไม้ '+t.symbol+' '+t.side+' ทิ้ง? (ใช้กับไม้ที่กรอกผิด)')) return;
     const r = await apiAct({ act:'delete', id:t.id });
     if(r && r.ok) refresh(); else alert((r&&r.error)||'ลบไม่สำเร็จ');
   }
+  const img = e.target.closest('.thumb img');
+  if(img){ $('#lbimg').src = img.src; $('#lbcap').textContent = img.dataset.cap||'';
+           $('#lb').classList.add('on'); }
 };
 
 /* ══ นำทาง ══ */

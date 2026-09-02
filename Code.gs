@@ -535,14 +535,29 @@ function makeSignalId(sig, bucketMs) {
  *   Path B: pollGmail() ← อีเมล Alert (ใช้ได้ทุกแพ็กเกจ)
  *******************************************************/
 
-/** Webhook endpoint — Deploy > New deployment > Web app > Anyone */
+/**
+ * doPost — ใช้ 2 อย่าง
+ *   1) Webhook จาก TradingView (ส่ง JSON สัญญาณมาตรง ๆ)
+ *   2) อัปโหลดรูปจากแอป (ต้องมี act:'upload' + key ที่ถูกต้อง)
+ * ส่งแบบ Content-Type: text/plain จะไม่โดน CORS preflight ของ Apps Script
+ */
 function doPost(e) {
   var body = '';
   try { body = (e && e.postData && e.postData.contents) ? e.postData.contents : ''; } catch (err) {}
-  var res = ingest(body, 'webhook');
-  return ContentService
-    .createTextOutput(JSON.stringify(res))
-    .setMimeType(ContentService.MimeType.JSON);
+
+  var obj = null;
+  try { obj = JSON.parse(body); } catch (err) { obj = null; }
+
+  if (obj && obj.act) {
+    var key = String(cfg('API_KEY', ''));
+    if (key && String(obj.key || '') !== key) {
+      return jsonOut_({ ok: false, error: 'unauthorized' }, null);
+    }
+    if (obj.act === 'upload') return jsonOut_(apiAttachImage_(obj), null);
+    return jsonOut_({ ok: false, error: 'ไม่รู้จักคำสั่ง ' + obj.act }, null);
+  }
+
+  return jsonOut_(ingest(body, 'webhook'), null);
 }
 
 // หมายเหตุ: doGet อยู่ในไฟล์ 09_WebApi.gs (ทำหน้าที่เป็น API ให้หน้า Dashboard ด้วย)
@@ -730,6 +745,7 @@ function openTrade_(sig, signalId) {
     mode, '', sig.note || ''
   ]);
 
+  CACHE.lastTradeId = id;          // ให้ฝั่งแอปเอา id ไปแนบรูปต่อได้ทันที
   if (cfgBool('NOTIFY_OPEN', true)) notifyOpen(sig, id, lots, mode, entryTime);
   return 'เปิดไม้ ' + id + (mode === MODE_TEST ? ' [TEST]' : '');
 }
@@ -1965,7 +1981,38 @@ function apiAddTrade_(p) {
   if (payload.action !== 'CLOSE' && payload.price === null) {
     return { ok: false, error: 'ยังไม่ได้กรอกราคาเข้า' };
   }
-  return ingest(JSON.stringify(payload), 'app');
+  CACHE.lastTradeId = '';
+  var res = ingest(JSON.stringify(payload), 'app');
+  res.trade_id = CACHE.lastTradeId || '';   // แอปเอาไปแนบรูปต่อ
+  return res;
+}
+
+/**
+ * แนบรูปให้ไม้เทรด — เรียกผ่าน POST (รูปใหญ่เกินกว่าจะใส่ใน query string)
+ * body: {act:'upload', key, id:'T2609..', b64, mime, name}
+ */
+function apiAttachImage_(o) {
+  var row = tradeRowById_(o.id);
+  if (!row) return { ok: false, error: 'ไม่พบไม้รหัส ' + (o.id || '(ว่าง)') };
+
+  var b64 = String(o.b64 || '');
+  if (!b64) return { ok: false, error: 'ไม่มีข้อมูลรูป' };
+  // base64 ยาว 4 ตัวต่อ 3 ไบต์ — กันไฟล์ใหญ่เกินที่ Apps Script ไหว
+  if (b64.length > 8 * 1024 * 1024) {
+    return { ok: false, error: 'รูปใหญ่เกินไป ลองย่อขนาดก่อน' };
+  }
+
+  var sh = ss().getSheetByName(SHEETS.TRADES);
+  var old = String(sh.getRange(row, COL_CHART).getValue() || '');
+  var driveId = saveImageBytes_(b64, o.mime, String(o.id));
+  if (!driveId) return { ok: false, error: 'บันทึกรูปลง Drive ไม่สำเร็จ' };
+
+  attachChart_(row, driveId);
+  // เปลี่ยนรูปใหม่ทับของเดิม → ย้ายรูปเก่าลงถังขยะ ไม่ให้ Drive รก
+  if (old && old !== driveId) {
+    try { DriveApp.getFileById(old).setTrashed(true); } catch (e) {}
+  }
+  return { ok: true, id: String(o.id), chart: driveId, replaced: !!old };
 }
 
 /** ปิดไม้ตามรหัส — ?act=close&id=T2609..&price=4346.09&when=2026-09-02%2014:00 */
@@ -2086,6 +2133,37 @@ function saveTelegramPhoto_(fileId, nameHint) {
     Logger.log('บันทึกรูปไม่สำเร็จ: ' + e);
     return null;
   }
+}
+
+/**
+ * บันทึกรูปที่แอปส่งมาเป็น base64 ลง Drive
+ * @return {string|null} id ของไฟล์ใน Drive
+ */
+function saveImageBytes_(b64, mime, nameHint) {
+  try {
+    if (!b64) return null;
+    var m = String(mime || 'image/jpeg');
+    var ext = m.indexOf('png') >= 0 ? 'png' : m.indexOf('webp') >= 0 ? 'webp' : 'jpg';
+    var name = (nameHint || 'chart') + '_' +
+               Utilities.formatDate(new Date(), tz(), 'yyyyMMdd_HHmmss') + '.' + ext;
+    var blob = Utilities.newBlob(Utilities.base64Decode(b64), m, name);
+    return chartFolder_().createFile(blob).getId();
+  } catch (e) {
+    Logger.log('บันทึกรูปจากแอปไม่สำเร็จ: ' + e);
+    return null;
+  }
+}
+
+/** หาแถวของไม้จากรหัส — ใช้ได้ทั้งไม้ที่เปิดอยู่และปิดไปแล้ว */
+function tradeRowById_(id) {
+  var sh = ss().getSheetByName(SHEETS.TRADES);
+  var last = sh.getLastRow();
+  if (last < 2 || !id) return null;
+  var ids = sh.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = ids.length - 1; i >= 0; i--) {
+    if (String(ids[i][0]) === String(id)) return i + 2;
+  }
+  return null;
 }
 
 /** ผูกรูปเข้ากับไม้เทรด (คอลัมน์ chart_id) */
