@@ -457,7 +457,7 @@ function guessSymbol(text) {
 function parseSignal(raw) {
   var out = { ok: false, error: '', symbol: '', tf: '', action: '',
               price: null, tp: null, sl: null, secret: '', bartime: '', note: '',
-              mode: '', when: '' };
+              mode: '', when: '', lots: null };
   var text = String(raw || '').trim();
   if (!text) { out.error = 'ข้อความว่าง'; return out; }
 
@@ -480,6 +480,7 @@ function parseSignal(raw) {
     out.note    = String(obj.note || obj.comment || '');
     out.mode    = obj.mode ? normMode(obj.mode) : '';
     out.when    = String(obj.when || obj.entry_time || '');
+    out.lots    = toNum(obj.lots !== undefined ? obj.lots : obj.size);
     if (out.action) out.action = detectAction(out.action) || out.action;
   }
 
@@ -717,7 +718,8 @@ function openTrade_(sig, signalId) {
   var sh = ss().getSheetByName(SHEETS.TRADES);
   var id = 'T' + Utilities.formatDate(new Date(), tz(), 'yyMMddHHmmss') +
            '-' + Math.floor(Math.random() * 900 + 100);
-  var lots = cfgNum('DEFAULT_LOTS', 1);
+  var lots = (sig.lots !== null && sig.lots !== undefined && sig.lots > 0)
+             ? sig.lots : cfgNum('DEFAULT_LOTS', 1);
   var mode = normMode(sig.mode || defaultMode());
   var entryTime = sig.when || nowStr();     // ไม้ย้อนหลังใช้เวลาที่ผู้ใช้ระบุ
 
@@ -1736,6 +1738,11 @@ function doGet(e) {
     // ขอรูปชาร์ต 1 ใบ — ?api=1&key=XXX&img=<driveId>
     if (p.img) return jsonOut_(serveImage_(String(p.img)), p.callback);
 
+    // บันทึก/ปิดไม้จากหน้าแอป
+    if (p.act === 'add')    return jsonOut_(apiAddTrade_(p), p.callback);
+    if (p.act === 'close')  return jsonOut_(apiCloseTrade_(p), p.callback);
+    if (p.act === 'delete') return jsonOut_(apiDeleteTrade_(p), p.callback);
+
     return jsonOut_(buildDashboardData_(p.month || '', p.mode || ''), p.callback);
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err) }, p.callback);
@@ -1768,6 +1775,8 @@ function buildDashboardData_(monthKey, modeParam) {
     mode: mode,
     default_mode: defaultMode(),
     has_test: hasTestData_(),
+    symbols: readSymbols_(),
+    default_lots: cfgNum('DEFAULT_LOTS', 1),
     daily: readDaily_(mode),
     open: readOpenWithFloating_(mode),
     history: readHistory_(mode, monthKey),
@@ -1926,6 +1935,83 @@ function countClosed_() {
   var n = 0;
   for (var i = 0; i < v.length; i++) if (String(v[i][0]) === 'CLOSED') n++;
   return n;
+}
+
+/* ---------- บันทึก / ปิด / ลบไม้ จากหน้าแอป ---------- */
+
+/**
+ * เปิดไม้จากฟอร์มในแอป
+ * ?api=1&key=..&act=add&symbol=XAUUSD&side=BUY&price=4296&tp=4346.09&sl=4270.74
+ *   &tf=30&lots=0.01&mode=TEST&when=2026-09-02%2009:30&note=...
+ * ส่งต่อเข้า ingest() ตัวเดียวกับ Telegram/Webhook จะได้กันซ้ำและลง Signals_Raw เหมือนกัน
+ */
+function apiAddTrade_(p) {
+  var side = detectAction(String(p.side || p.action || ''));
+  if (!side) return { ok: false, error: 'ต้องระบุทิศเป็น BUY / SELL / CLOSE' };
+
+  var payload = {
+    symbol: String(p.symbol || '').toUpperCase().trim(),
+    tf:     String(p.tf || 'APP').trim(),
+    action: side,
+    price:  toNum(p.price),
+    tp:     toNum(p.tp),
+    sl:     toNum(p.sl),
+    lots:   toNum(p.lots),
+    mode:   normMode(p.mode || defaultMode()),
+    when:   String(p.when || '').trim(),
+    note:   String(p.note || '').trim()
+  };
+  if (!payload.symbol) return { ok: false, error: 'ยังไม่ได้เลือกสัญลักษณ์' };
+  if (payload.action !== 'CLOSE' && payload.price === null) {
+    return { ok: false, error: 'ยังไม่ได้กรอกราคาเข้า' };
+  }
+  return ingest(JSON.stringify(payload), 'app');
+}
+
+/** ปิดไม้ตามรหัส — ?act=close&id=T2609..&price=4346.09&when=2026-09-02%2014:00 */
+function apiCloseTrade_(p) {
+  var id = String(p.id || '').trim();
+  if (!id) return { ok: false, error: 'ไม่ได้ระบุรหัสไม้' };
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(20000); } catch (e) {
+    return { ok: false, error: 'ระบบกำลังประมวลผลอย่างอื่นอยู่' };
+  }
+  try {
+    var t = null;
+    findOpenTrades_(null, null, null).forEach(function (x) { if (x.id === id) t = x; });
+    if (!t) return { ok: false, error: 'ไม่พบไม้นี้ หรือปิดไปแล้ว' };
+
+    var px = toNum(p.price);
+    if (px === null && normMode(t.mode) === MODE_TEST) {
+      return { ok: false, error: 'ไม้ TEST ต้องกรอกราคาปิดเอง (ระบบไม่ดึงราคาย้อนหลังให้)' };
+    }
+    closeTrade_(t, px, String(p.reason || 'MANUAL'), '', String(p.when || '').trim());
+    return { ok: true, id: id };
+  } finally { lock.releaseLock(); }
+}
+
+/** ลบไม้ที่กรอกผิด — ?act=delete&id=T2609.. (ลบได้เฉพาะไม้ที่ยังเปิดอยู่) */
+function apiDeleteTrade_(p) {
+  var id = String(p.id || '').trim();
+  if (!id) return { ok: false, error: 'ไม่ได้ระบุรหัสไม้' };
+  var t = null;
+  findOpenTrades_(null, null, null).forEach(function (x) { if (x.id === id) t = x; });
+  if (!t) return { ok: false, error: 'ลบได้เฉพาะไม้ที่ยังเปิดอยู่' };
+  ss().getSheetByName(SHEETS.TRADES).deleteRow(t.row);
+  return { ok: true, id: id };
+}
+
+/** รายชื่อสัญลักษณ์จากชีต Symbol_Map — ให้แอปทำ dropdown */
+function readSymbols_() {
+  var sh = ss().getSheetByName(SHEETS.MAP);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues()
+    .filter(function (r) { return r[0] && String(r[0]) !== '*'; })
+    .map(function (r) {
+      return { symbol: String(r[0]).toUpperCase(),
+               vpp: Number(r[3]) || 1, digits: Number(r[4]) || 2 };
+    });
 }
 
 /* ---------- ตัวช่วยตอนติดตั้ง ---------- */

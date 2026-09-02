@@ -204,6 +204,51 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 .lb .cap{position:absolute;bottom:calc(16px + env(safe-area-inset-bottom));left:0;right:0;
   text-align:center;color:var(--ink-2);font-size:12.5px;padding:0 16px}
 
+/* ── ปุ่มลอย + ฟอร์มกรอกไม้ ─────────────────────────────── */
+.fab{position:fixed;right:16px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:40;
+  width:56px;height:56px;border-radius:18px;background:var(--profit);color:#05130d;
+  display:grid;place-items:center;box-shadow:0 6px 20px rgba(0,0,0,.55)}
+.fab svg{width:26px;height:26px}
+.fab:active{transform:scale(.94)}
+
+.sheet{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.6);display:none;
+  align-items:flex-end;justify-content:center}
+.sheet.on{display:flex}
+.sheet .panel{background:var(--surface);width:100%;max-width:560px;max-height:92vh;
+  overflow-y:auto;border-radius:20px 20px 0 0;border:1px solid var(--ring);
+  padding:18px 16px calc(20px + env(safe-area-inset-bottom))}
+.sheet h2{font-size:16px;margin-bottom:2px}
+.sheet .close{position:absolute;top:-46px;right:0;width:36px;height:36px;border-radius:50%;
+  background:var(--surface-2);color:var(--ink);font-size:18px;line-height:1}
+.wrapfix{position:relative;width:100%;max-width:560px;margin:0 auto}
+
+.seg{display:flex;gap:4px;background:var(--surface-2);border-radius:11px;padding:3px}
+.seg button{flex:1;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--plane);color:var(--ink)}
+.seg button.on[data-v="BUY"]{color:var(--profit)}
+.seg button.on[data-v="SELL"]{color:var(--loss)}
+.seg button.on[data-v="TEST"]{color:#f0c04a}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.sheet input,.sheet select,.sheet textarea{width:100%;padding:11px 12px;border-radius:11px;
+  background:var(--plane);border:1px solid var(--ring);color:var(--ink);font:inherit}
+.sheet input[inputmode=decimal]{font-variant-numeric:tabular-nums}
+.sheet textarea{resize:vertical;min-height:60px}
+.rowbtns{display:flex;gap:8px;margin-top:16px}
+.rowbtns .btn{margin-top:0}
+.msg{border-radius:11px;padding:10px 12px;font-size:13px;margin-top:12px;display:none}
+.msg.on{display:block}
+.msg.ok{background:rgba(27,175,122,.14);border:1px solid rgba(27,175,122,.4);color:#7fe3bd}
+.msg.bad{background:rgba(208,59,59,.12);border:1px solid rgba(208,59,59,.4);color:#ffb4b4}
+.rr{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
+.rr b{color:var(--ink-2);font-variant-numeric:tabular-nums}
+.act{display:flex;gap:8px;margin-top:10px}
+.act button{flex:1;padding:9px;border-radius:10px;font-size:12.5px;font-weight:600;
+  background:var(--surface-2);color:var(--ink-2);border:1px solid var(--ring)}
+.act button.prim{background:rgba(57,135,229,.16);color:#8dc0f5;border-color:rgba(57,135,229,.4)}
+.act button.danger{color:#ff9a9a}
+
 .skel{background:var(--surface);border-radius:var(--radius);height:76px;
   animation:p 1.4s ease-in-out infinite}
 @keyframes p{0%,100%{opacity:.5}50%{opacity:.85}}
@@ -350,6 +395,114 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
     <button class="tab" data-p="set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1v.2a2 2 0 11-4 0v-.1A1.6 1.6 0 007 19.4a1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.6 1.6 0 002.5 14H2.3a2 2 0 110-4h.1A1.6 1.6 0 004.6 7a1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H9a1.6 1.6 0 001-1.5V.8a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V9a1.6 1.6 0 001.5 1h.2a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/></svg>ตั้งค่า</button>
   </div>
 </nav>
+
+<button class="fab" id="fab" aria-label="บันทึกไม้ใหม่">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+    stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<!-- ฟอร์มบันทึกไม้ -->
+<div class="sheet" id="sh-add" role="dialog" aria-modal="true" aria-label="บันทึกไม้ใหม่">
+  <div class="wrapfix">
+    <button class="close" id="add-x" aria-label="ปิด">✕</button>
+    <div class="panel">
+      <h2>บันทึกไม้เทรด</h2>
+      <div class="hint" style="margin-top:2px">กรอกแล้วกดบันทึก ระบบจะคิดกำไร/สถิติให้เอง</div>
+
+      <label>กระเป๋า</label>
+      <div class="seg" id="f-mode">
+        <button data-v="LIVE" class="on">เทรดจริง</button>
+        <button data-v="TEST">🧪 TEST</button>
+      </div>
+
+      <label>ทิศทาง</label>
+      <div class="seg" id="f-side">
+        <button data-v="BUY" class="on">BUY</button>
+        <button data-v="SELL">SELL</button>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label for="f-sym">สัญลักษณ์</label>
+          <input id="f-sym" list="symlist" autocomplete="off" spellcheck="false" placeholder="XAUUSD">
+          <datalist id="symlist"></datalist>
+        </div>
+        <div>
+          <label for="f-tf">Timeframe</label>
+          <input id="f-tf" autocomplete="off" placeholder="30" value="30">
+        </div>
+      </div>
+
+      <div class="grid3">
+        <div>
+          <label for="f-price">ราคาเข้า *</label>
+          <input id="f-price" inputmode="decimal" autocomplete="off" placeholder="4296.00">
+        </div>
+        <div>
+          <label for="f-tp">TP</label>
+          <input id="f-tp" inputmode="decimal" autocomplete="off" placeholder="4346.09">
+        </div>
+        <div>
+          <label for="f-sl">SL</label>
+          <input id="f-sl" inputmode="decimal" autocomplete="off" placeholder="4270.74">
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label for="f-lots">ขนาดไม้ (lot)</label>
+          <input id="f-lots" inputmode="decimal" autocomplete="off" placeholder="0.01">
+        </div>
+        <div>
+          <label for="f-when">วัน–เวลาที่เข้า</label>
+          <input id="f-when" type="datetime-local">
+        </div>
+      </div>
+
+      <label for="f-note">โน้ต (ไม่ใส่ก็ได้)</label>
+      <textarea id="f-note" placeholder="เช่น GTPro โซนล่าง + Bull"></textarea>
+
+      <div class="rr" id="f-rr"></div>
+      <div class="msg" id="f-msg"></div>
+
+      <div class="rowbtns">
+        <button class="btn ghost" id="add-cancel">ยกเลิก</button>
+        <button class="btn" id="add-save">บันทึกไม้</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ฟอร์มปิดไม้ -->
+<div class="sheet" id="sh-close" role="dialog" aria-modal="true" aria-label="ปิดไม้">
+  <div class="wrapfix">
+    <button class="close" id="cl-x" aria-label="ปิด">✕</button>
+    <div class="panel">
+      <h2>ปิดไม้</h2>
+      <div class="hint" style="margin-top:2px" id="cl-info"></div>
+      <div class="grid2">
+        <div>
+          <label for="cl-price">ราคาปิด *</label>
+          <input id="cl-price" inputmode="decimal" autocomplete="off">
+        </div>
+        <div>
+          <label for="cl-when">วัน–เวลาที่ปิด</label>
+          <input id="cl-when" type="datetime-local">
+        </div>
+      </div>
+      <div class="act" style="margin-top:12px">
+        <button id="cl-tp">ใช้ราคา TP</button>
+        <button id="cl-sl">ใช้ราคา SL</button>
+      </div>
+      <div class="rr" id="cl-rr"></div>
+      <div class="msg" id="cl-msg"></div>
+      <div class="rowbtns">
+        <button class="btn ghost" id="cl-cancel">ยกเลิก</button>
+        <button class="btn" id="cl-save">ปิดไม้นี้</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="รูปชาร์ต">
   <button class="x" id="lbx" aria-label="ปิด">✕</button>
@@ -588,15 +741,16 @@ function renderOpen(){
   $('#o-n').textContent=fmt(list.length,0);
 
   if(!list.length){ $('#openList').innerHTML=
-    '<div class="empty">ยังไม่มีไม้ที่เปิดอยู่<br>พิมพ์สัญญาณในแชต Telegram ได้เลย</div>'; return; }
+    '<div class="empty">ยังไม่มีไม้ที่เปิดอยู่<br>กดปุ่ม + มุมขวาล่างเพื่อบันทึกไม้</div>'; return; }
 
   $('#openList').innerHTML=list.map(t=>{
     const d=t.digits==null?2:t.digits;
-    return `<div class="trade">
+    return `<div class="trade" data-id="${esc(t.id)}">
       <div class="trow">
         <span class="pill ${t.side==='BUY'?'buy':'sell'}">${t.side}</span>
-        <span class="sym">${t.symbol}</span>
-        <span class="tf">${t.tf}</span>
+        <span class="sym">${esc(t.symbol)}</span>
+        <span class="tf">${esc(t.tf)}</span>
+        ${t.mode==='TEST'?'<span class="tf" style="color:#f0c04a">TEST</span>':''}
         <span class="fl ${cls(t.float_usd)}">${t.float_usd==null?'—':sgn(t.float_usd)}
           <small>${t.float_usd==null?'ดึงราคาไม่ได้':(t.float_r!=null?sgn(t.float_r,2)+' R':'USD')}</small></span>
       </div>
@@ -605,6 +759,11 @@ function renderOpen(){
         <span><b>ล่าสุด</b> ${t.last==null?'—':fmt(t.last,d)}</span>
         ${t.tp?`<span><b>TP</b> ${fmt(t.tp,d)}</span>`:''}
         ${t.sl?`<span><b>SL</b> ${fmt(t.sl,d)}</span>`:''}
+        <span><b>ขนาด</b> ${fmt(t.lots,2)} lot</span>
+      </div>
+      <div class="act">
+        <button class="prim" data-a="close">ปิดไม้</button>
+        <button class="danger" data-a="del">ลบ</button>
       </div></div>`;
   }).join('');
 }
@@ -694,6 +853,161 @@ $('#histList').onclick=async e=>{
 $('#lbx').onclick=()=>$('#lb').classList.remove('on');
 $('#lb').onclick=e=>{ if(e.target.id==='lb') $('#lb').classList.remove('on'); };
 addEventListener('keydown',e=>{ if(e.key==='Escape') $('#lb').classList.remove('on'); });
+
+/* ══ ฟอร์มบันทึก / ปิดไม้ ══════════════════════════════ */
+function apiAct(params){
+  const q = Object.keys(params)
+    .filter(k => params[k] !== '' && params[k] != null)
+    .map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+  const u = `${cfg.url}?api=1&key=${encodeURIComponent(cfg.key)}&${q}`;
+  return fetch(u,{redirect:'follow'}).then(r=>r.json()).catch(()=>jsonp(u));
+}
+/* input[type=datetime-local] → "yyyy-MM-dd HH:mm" ที่ฝั่ง Apps Script อ่านได้ */
+const dtOut = v => v ? v.replace('T',' ') : '';
+const dtNow = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset());
+  return d.toISOString().slice(0,16); };
+
+function segWire(id){
+  const box = $('#'+id);
+  box.onclick = e => {
+    const b = e.target.closest('button'); if(!b) return;
+    [...box.children].forEach(x => x.classList.toggle('on', x===b));
+    if(id==='f-side'||id==='f-mode') showRR();
+  };
+  return () => (box.querySelector('button.on')||box.children[0]).dataset.v;
+}
+const getMode = segWire('f-mode'), getSide = segWire('f-side');
+
+function msg(el, text, ok){
+  el.className = 'msg on ' + (ok ? 'ok' : 'bad');
+  el.textContent = text;
+}
+function msgHide(el){ el.className='msg'; }
+
+/* แสดง R:R และเงินที่เสี่ยง ให้เห็นก่อนกดบันทึก */
+function showRR(){
+  const e = parseFloat($('#f-price').value), tp = parseFloat($('#f-tp').value),
+        sl = parseFloat($('#f-sl').value), lots = parseFloat($('#f-lots').value)||0;
+  const sym = ($('#f-sym').value||'').toUpperCase().trim();
+  const meta = ((data&&data.symbols)||[]).find(s=>s.symbol===sym);
+  const vpp = meta ? meta.vpp : 1;
+  const dir = getSide()==='BUY' ? 1 : -1;
+  if(!isFinite(e) || !isFinite(sl)){ $('#f-rr').innerHTML=''; return; }
+  const risk = (e-sl)*dir, reward = isFinite(tp) ? (tp-e)*dir : null;
+  const bad = risk<=0 ? ' ⚠️ SL อยู่ผิดฝั่ง' : '';
+  $('#f-rr').innerHTML =
+    `เสี่ยง <b>${fmt(Math.abs(risk),2)}</b> จุด` +
+    (lots&&vpp ? ` ≈ <b>${fmt(Math.abs(risk)*vpp*lots,2)} USD</b>` : '') +
+    (reward!=null ? ` · ได้ <b>${fmt(Math.abs(reward),2)}</b> จุด` +
+      (lots&&vpp ? ` ≈ <b>${fmt(Math.abs(reward)*vpp*lots,2)} USD</b>` : '') +
+      ` · R:R <b>1 : ${fmt(Math.abs(reward/risk),2)}</b>` : '') + bad;
+}
+['f-price','f-tp','f-sl','f-lots','f-sym'].forEach(id => $('#'+id).oninput = showRR);
+
+function openAdd(){
+  msgHide($('#f-msg'));
+  $('#f-when').value = dtNow();
+  if(!$('#f-lots').value) $('#f-lots').value = (data&&data.default_lots) || 0.01;
+  if(!$('#f-sym').value){
+    const s = (data&&data.symbols)||[];
+    if(s.length) $('#f-sym').value = s[0].symbol;
+  }
+  $('#symlist').innerHTML = ((data&&data.symbols)||[])
+    .map(s=>`<option value="${esc(s.symbol)}">`).join('');
+  // เปิดฟอร์มด้วยกระเป๋าที่กำลังดูอยู่ จะได้ไม่ลงผิดกระเป๋า
+  [...$('#f-mode').children].forEach(b=>b.classList.toggle('on', b.dataset.v===mode));
+  showRR();
+  $('#sh-add').classList.add('on');
+  setTimeout(()=>$('#f-price').focus(), 120);
+}
+function closeAdd(){ $('#sh-add').classList.remove('on'); }
+$('#fab').onclick = () => cfg&&cfg.url ? openAdd() : go('set');
+$('#add-x').onclick = closeAdd;
+$('#add-cancel').onclick = closeAdd;
+$('#sh-add').onclick = e => { if(e.target.id==='sh-add') closeAdd(); };
+
+$('#add-save').onclick = async () => {
+  const btn = $('#add-save'), m = $('#f-msg');
+  const price = $('#f-price').value.trim();
+  if(!$('#f-sym').value.trim()) return msg(m,'ยังไม่ได้กรอกสัญลักษณ์',false);
+  if(!price) return msg(m,'ยังไม่ได้กรอกราคาเข้า',false);
+  btn.disabled = true; btn.textContent = 'กำลังบันทึก…'; msgHide(m);
+  try{
+    const r = await apiAct({
+      act:'add', symbol:$('#f-sym').value.trim(), side:getSide(), mode:getMode(),
+      tf:$('#f-tf').value.trim(), price, tp:$('#f-tp').value.trim(),
+      sl:$('#f-sl').value.trim(), lots:$('#f-lots').value.trim(),
+      when:dtOut($('#f-when').value), note:$('#f-note').value.trim()
+    });
+    if(!r || r.ok===false) throw new Error((r&&r.error)||'บันทึกไม่สำเร็จ');
+    if(r.status==='duplicate') msg(m,'ไม้นี้บันทึกไปแล้ว (ระบบกันซ้ำ)',false);
+    else{
+      msg(m,'บันทึกแล้ว ✓ '+(r.result||''),true);
+      ['f-price','f-tp','f-sl','f-note'].forEach(id=>$('#'+id).value='');
+      $('#f-rr').innerHTML='';
+      if(getMode()!==mode){ mode=getMode(); }   // เพิ่งลงคนละกระเป๋า → สลับตาม
+      await refresh();
+      setTimeout(closeAdd, 900);
+    }
+  }catch(err){ msg(m,'ผิดพลาด: '+err.message,false); }
+  finally{ btn.disabled=false; btn.textContent='บันทึกไม้'; }
+};
+
+/* ── ปิดไม้ ── */
+let closing = null;
+function openClose(t){
+  closing = t; msgHide($('#cl-msg'));
+  const d = t.digits==null?2:t.digits;
+  $('#cl-info').textContent = `${t.side} ${t.symbol} ${t.tf} · เข้า ${fmt(t.entry,d)}` +
+    (t.mode==='TEST' ? ' · 🧪 TEST' : '');
+  $('#cl-price').value = (t.last!=null && t.mode!=='TEST') ? t.last : '';
+  $('#cl-when').value = dtNow();
+  $('#cl-tp').style.display = t.tp ? '' : 'none';
+  $('#cl-sl').style.display = t.sl ? '' : 'none';
+  clRR();
+  $('#sh-close').classList.add('on');
+}
+function clRR(){
+  if(!closing) return;
+  const px = parseFloat($('#cl-price').value);
+  if(!isFinite(px)){ $('#cl-rr').innerHTML=''; return; }
+  const dir = closing.side==='BUY'?1:-1, pts = (px-closing.entry)*dir;
+  const meta = ((data&&data.symbols)||[]).find(s=>s.symbol===closing.symbol);
+  const usd = pts * (meta?meta.vpp:1) * (closing.lots||1);
+  $('#cl-rr').innerHTML = `ผลลัพธ์ <b class="${cls(pts)}">${sgn(pts,2)}</b> จุด ` +
+    `≈ <b class="${cls(usd)}">${sgn(usd,2)} USD</b>`;
+}
+$('#cl-price').oninput = clRR;
+$('#cl-tp').onclick = () => { $('#cl-price').value = closing.tp; clRR(); };
+$('#cl-sl').onclick = () => { $('#cl-price').value = closing.sl; clRR(); };
+$('#cl-x').onclick = $('#cl-cancel').onclick = () => $('#sh-close').classList.remove('on');
+$('#sh-close').onclick = e => { if(e.target.id==='sh-close') $('#sh-close').classList.remove('on'); };
+
+$('#cl-save').onclick = async () => {
+  const btn = $('#cl-save'), m = $('#cl-msg');
+  if(!$('#cl-price').value.trim()) return msg(m,'ยังไม่ได้กรอกราคาปิด',false);
+  btn.disabled = true; btn.textContent='กำลังปิด…'; msgHide(m);
+  try{
+    const r = await apiAct({ act:'close', id:closing.id, price:$('#cl-price').value.trim(),
+                             when:dtOut($('#cl-when').value) });
+    if(!r || r.ok===false) throw new Error((r&&r.error)||'ปิดไม่สำเร็จ');
+    msg(m,'ปิดไม้แล้ว ✓',true);
+    await refresh();
+    setTimeout(()=>$('#sh-close').classList.remove('on'), 700);
+  }catch(err){ msg(m,'ผิดพลาด: '+err.message,false); }
+  finally{ btn.disabled=false; btn.textContent='ปิดไม้นี้'; }
+};
+
+$('#openList').onclick = async e => {
+  const row = e.target.closest('.trade'); if(!row) return;
+  const t = (data.open||[]).find(x=>x.id===row.dataset.id); if(!t) return;
+  if(e.target.closest('[data-a="close"]')) return openClose(t);
+  if(e.target.closest('[data-a="del"]')){
+    if(!confirm('ลบไม้ '+t.symbol+' '+t.side+' ทิ้ง? (ใช้กับไม้ที่กรอกผิด)')) return;
+    const r = await apiAct({ act:'delete', id:t.id });
+    if(r && r.ok) refresh(); else alert((r&&r.error)||'ลบไม่สำเร็จ');
+  }
+};
 
 /* ══ นำทาง ══ */
 function go(p){

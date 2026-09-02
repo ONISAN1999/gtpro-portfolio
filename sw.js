@@ -1,7 +1,7 @@
 /* GTPro Portfolio — service worker
    เปลือกแอปแคชไว้ให้เปิดได้แม้ไม่มีเน็ต ส่วนข้อมูลดึงสดเสมอ
    (ข้อมูลล่าสุดถูกเก็บใน localStorage โดยตัวหน้าเว็บเอง) */
-const V = 'gtpro-v2';
+const V = 'gtpro-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
