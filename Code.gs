@@ -1,4 +1,3 @@
-/* ===== 00_Config.gs ===== */
 /*******************************************************
  * GTPro Signal DB — 00_Config.gs
  * ระบบเก็บสัญญาณ GTPro + Paper Trade + แจ้งเตือน Telegram
@@ -133,7 +132,6 @@ function defaultMode() {
   return normMode(cfg('DEFAULT_MODE', MODE_LIVE));
 }
 
-/* ===== 01_Setup.gs ===== */
 /*******************************************************
  * 01_Setup.gs — สร้างชีต ตั้ง Trigger เมนู
  * ▶ รันฟังก์ชัน setup() ครั้งเดียวตอนติดตั้ง
@@ -148,6 +146,7 @@ function onOpen() {
     .addItem('4. เปิดรับสัญญาณทาง Telegram', 'installTelegramTrigger')
     .addItem('5. สร้าง API key สำหรับ Dashboard', 'generateApiKey')
     .addItem('6. อัปเกรดชีตให้รองรับรูป + โหมด Test', 'migrateAddModeAndChart')
+    .addItem('7. เปิดเตือนข่าวเศรษฐกิจ', 'installNewsTrigger')
     .addSeparator()
     .addItem('อ่านข้อความ Telegram เดี๋ยวนี้', 'pollTelegram')
     .addItem('ตรวจ TP/SL เดี๋ยวนี้', 'monitorOpenTrades')
@@ -156,6 +155,7 @@ function onOpen() {
     .addItem('สร้างปฏิทินใหม่', 'buildCalendar')
     .addItem('ส่งสรุปรายวันเดี๋ยวนี้', 'sendDailySummary')
     .addItem('เก็บกวาดรูปที่ไม่ได้ใช้', 'cleanupOrphanCharts')
+    .addItem('ทดสอบดึงข่าวเดี๋ยวนี้', 'testNews')
     .addSeparator()
     .addItem('ใส่ข้อมูลตัวอย่าง (ทดสอบ)', 'seedDemoData')
     .addToUi();
@@ -281,7 +281,6 @@ function clearData() {
   SpreadsheetApp.getActive().toast('ล้างข้อมูลแล้ว', 'GTPro', 5);
 }
 
-/* ===== 02_Parser.gs ===== */
 /*******************************************************
  * 02_Parser.gs — แปลงข้อความ Alert เป็น object สัญญาณ
  * ฟังก์ชันในไฟล์นี้เป็น pure function ทั้งหมด (ทดสอบแยกได้)
@@ -528,7 +527,6 @@ function makeSignalId(sig, bucketMs) {
   return [sig.symbol, sig.tf, sig.action, sig.price, sig.mode || '', t].join('|');
 }
 
-/* ===== 03_Ingest.gs ===== */
 /*******************************************************
  * 03_Ingest.gs — รับสัญญาณ 2 ทาง
  *   Path A: doPost()  ← TradingView Webhook (Essential ขึ้นไป)
@@ -656,7 +654,6 @@ function testIngest() {
   Logger.log(ingest(demo, 'manual'));
 }
 
-/* ===== 04_Engine.gs ===== */
 /*******************************************************
  * 04_Engine.gs — Paper Trade Engine
  *   เปิดไม้จากสัญญาณ / ปิดไม้เมื่อชน TP-SL หรือมีสัญญาณตรงข้าม
@@ -931,7 +928,6 @@ function parseDate_(v) {
   return isNaN(d.getTime()) ? new Date() : d;
 }
 
-/* ===== 05_Notify.gs ===== */
 /*******************************************************
  * 05_Notify.gs — แจ้งเตือน Telegram
  *******************************************************/
@@ -1035,7 +1031,6 @@ function testTelegram() {
   SpreadsheetApp.getActive().toast(ok ? 'ส่งสำเร็จ — เช็ค Telegram' : 'ส่งไม่สำเร็จ ดู Log', 'GTPro', 8);
 }
 
-/* ===== 06_Report.gs ===== */
 /*******************************************************
  * 06_Report.gs — สถิติกำไร / ปฏิทินรายวัน / สรุปส่ง Telegram
  *******************************************************/
@@ -1263,7 +1258,6 @@ function seedDemoData() {
   rebuildAll();
 }
 
-/* ===== 07_Calendar.gs ===== */
 /*******************************************************
  * 07_Calendar.gs — ปฏิทินกำไรรายวัน (แบบ Trading Calendar)
  *   สร้างชีต "Calendar" แสดงกำไรรายวันเป็นตารางปฏิทิน
@@ -1385,7 +1379,6 @@ function buildCalendar() {
 }
 // หมายเหตุ: pad2_ ย้ายไปอยู่ใน 00_Config.gs แล้ว (ใช้ร่วมกันหลายไฟล์)
 
-/* ===== 08_Telegram_Intake.gs ===== */
 /*******************************************************
  * 08_Telegram_Intake.gs — รับสัญญาณผ่าน Telegram
  *   ใช้แทน TradingView Alert สำหรับแพ็กเกจ Basic
@@ -1726,7 +1719,6 @@ function tgClose_(text) {
   if (!n) tgSend('ปิดไม่สำเร็จ — ลองระบุราคาด้วย เช่น <code>/close ' + sym + ' 1595</code>');
 }
 
-/* ===== 09_WebApi.gs ===== */
 /*******************************************************
  * 09_WebApi.gs — API สำหรับหน้า Dashboard (PWA)
  *
@@ -1758,6 +1750,7 @@ function doGet(e) {
     if (p.act === 'add')    return jsonOut_(apiAddTrade_(p), p.callback);
     if (p.act === 'close')  return jsonOut_(apiCloseTrade_(p), p.callback);
     if (p.act === 'delete') return jsonOut_(apiDeleteTrade_(p), p.callback);
+    if (p.act === 'news')   return jsonOut_({ ok: true, news: newsForApp_() }, p.callback);
 
     return jsonOut_(buildDashboardData_(p.month || '', p.mode || ''), p.callback);
   } catch (err) {
@@ -1797,6 +1790,7 @@ function buildDashboardData_(monthKey, modeParam) {
     open: readOpenWithFloating_(mode),
     history: readHistory_(mode, monthKey),
     stats: readStats_(),
+    news: newsForApp_(),
     closed_count: countClosed_()
   };
 }
@@ -2083,7 +2077,6 @@ function generateApiKey() {
     '\n\nนำไปกรอกในหน้า Dashboard ตอนเปิดครั้งแรก\n(ค่านี้อยู่ในชีต Config แถว API_KEY)');
 }
 
-/* ===== 10_Charts.gs ===== */
 /*******************************************************
  * 10_Charts.gs — รูปชาร์ตประกอบไม้เทรด
  *   รับรูปจากแชต Telegram → เก็บใน Google Drive ของเจ้าของ
@@ -2217,5 +2210,231 @@ function cleanupOrphanCharts() {
     if (!used[f.getId()]) { f.setTrashed(true); n++; }
   }
   SpreadsheetApp.getActive().toast('ย้ายรูปที่ไม่ได้ใช้ไปถังขยะ ' + fmt(n, 0) + ' ไฟล์', 'GTPro', 6);
+}
+
+/*******************************************************
+ * 11_News.gs — ปฏิทินข่าวเศรษฐกิจที่มีผลกับทอง/ดอลลาร์
+ *   ดึงฝั่งเซิร์ฟเวอร์ด้วย UrlFetchApp (ไม่ติด CORS เหมือนยิงจากเบราว์เซอร์)
+ *   แคชไว้ 30 นาที แอปเรียกผ่าน API เดิม ไม่ต้องยิงเว็บนอกเอง
+ *******************************************************/
+
+var NEWS_URL_WEEK = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+var NEWS_URL_NEXT = 'https://nfs.faireconomy.media/ff_calendar_nextweek.json';
+var NEWS_CACHE_KEY = 'news_v1';
+var NEWS_CACHE_SEC = 1800;          // 30 นาที
+var NEWS_ALERT_MIN = 30;            // เตือนล่วงหน้ากี่นาที
+
+/**
+ * ผลของ "ตัวเลขจริงออกมาสูงกว่าที่คาด" ต่อราคาทอง
+ *   -1 = ทองมีแนวโน้มลง (ดอลลาร์แข็ง)
+ *   +1 = ทองมีแนวโน้มขึ้น
+ *    0 = ตีความจากตัวเลขอย่างเดียวไม่ได้ ต้องฟังเนื้อหา
+ */
+function goldDirection_(title) {
+  var t = String(title || '').toLowerCase();
+
+  // ตัวเลขยิ่งสูง = เศรษฐกิจยิ่งแย่ → ทองขึ้น
+  if (/unemployment rate|jobless claims|continuing claims/.test(t)) return 1;
+
+  // การจ้างงาน / เงินเฟ้อ / กิจกรรมเศรษฐกิจ → สูง = ดอลลาร์แข็ง = ทองลง
+  if (/non-farm|nonfarm|payroll|employment change|adp/.test(t))         return -1;
+  if (/\bcpi\b|\bppi\b|inflation|\bpce\b/.test(t))                      return -1;
+  if (/retail sales|\bgdp\b|durable goods|industrial production/.test(t))return -1;
+  if (/\bism\b|\bpmi\b|consumer confidence|consumer sentiment/.test(t)) return -1;
+  if (/federal funds rate|interest rate decision/.test(t))              return -1;
+  if (/average hourly earnings|employment cost/.test(t))                return -1;
+
+  return 0;
+}
+
+/** เหตุการณ์ที่ไม่มีตัวเลข แต่สำคัญกับทองมาก (ต้องฟังเนื้อหา) */
+function isTalkEvent_(title) {
+  return /fomc|powell|fed chair|press conference|statement|minutes|testimony|speaks/i
+         .test(String(title || ''));
+}
+
+/** ดึงปฏิทินดิบ 2 สัปดาห์ */
+function fetchNewsRaw_() {
+  var all = [];
+  [NEWS_URL_WEEK, NEWS_URL_NEXT].forEach(function (u) {
+    try {
+      var r = UrlFetchApp.fetch(u, {
+        muteHttpExceptions: true, followRedirects: true,
+        headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+      });
+      if (r.getResponseCode() !== 200) return;
+      var j = JSON.parse(r.getContentText());
+      if (j instanceof Array) all = all.concat(j);
+    } catch (e) {
+      Logger.log('ดึงปฏิทินข่าวไม่สำเร็จ ' + u + ': ' + e);
+    }
+  });
+  return all;
+}
+
+/**
+ * แปลงข้อมูลดิบเป็นรูปแบบที่แอปใช้
+ * เก็บเฉพาะ USD (ดอลลาร์คุมราคาทอง) ระดับ High/Medium
+ */
+function normalizeNews_(raw) {
+  var out = [];
+  for (var i = 0; i < raw.length; i++) {
+    var e = raw[i];
+    if (String(e.country || '').toUpperCase() !== 'USD') continue;
+    var im = String(e.impact || '');
+    if (im !== 'High' && im !== 'Medium') continue;
+
+    var d = parseDate_(e.date);
+    if (!d || isNaN(d.getTime())) continue;
+
+    out.push({
+      id: String(e.title || '').replace(/[^A-Za-z0-9]/g, '').substring(0, 16) + '_' +
+          Utilities.formatDate(d, 'UTC', 'yyyyMMddHHmm'),
+      title: String(e.title || ''),
+      impact: im,
+      when: Utilities.formatDate(d, tz(), 'yyyy-MM-dd HH:mm'),
+      ts: d.getTime(),
+      forecast: String(e.forecast || ''),
+      previous: String(e.previous || ''),
+      actual: String(e.actual || ''),
+      dir: goldDirection_(e.title),
+      talk: isTalkEvent_(e.title)
+    });
+  }
+  out.sort(function (a, b) { return a.ts - b.ts; });
+  return out;
+}
+
+/** อ่านปฏิทิน (มีแคช + ตัวสำรองเผื่อแหล่งข้อมูลล่ม) */
+function readNews_(force) {
+  var c = CacheService.getScriptCache();
+  if (!force) {
+    var hit = c.get(NEWS_CACHE_KEY);
+    if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  }
+
+  var list = normalizeNews_(fetchNewsRaw_());
+  if (list.length) {
+    try { c.put(NEWS_CACHE_KEY, JSON.stringify(list), NEWS_CACHE_SEC); } catch (e) {}
+    try {
+      PropertiesService.getScriptProperties()
+        .setProperty('NEWS_BACKUP', JSON.stringify(list).substring(0, 400000));
+    } catch (e) {}
+    return list;
+  }
+
+  // ดึงไม่ได้ → ใช้ชุดล่าสุดที่เคยดึงสำเร็จ ดีกว่าหน้าว่าง
+  try {
+    var b = PropertiesService.getScriptProperties().getProperty('NEWS_BACKUP');
+    if (b) return JSON.parse(b);
+  } catch (e) {}
+  return [];
+}
+
+/**
+ * ข่าวที่ส่งให้แอป — ย้อนหลัง 18 ชม. ถึงอีก 7 วัน
+ * ใส่ mins (นาทีที่เหลือ, ติดลบ = ผ่านไปแล้ว) ให้แอปนับถอยหลัง/เตือนได้
+ */
+function newsForApp_() {
+  var all = readNews_(false);
+  var now = Date.now();
+  var from = now - 18 * 3600 * 1000;
+  var to   = now + 7 * 24 * 3600 * 1000;
+
+  var out = [];
+  for (var i = 0; i < all.length; i++) {
+    var e = all[i];
+    if (e.ts < from || e.ts > to) continue;
+    out.push({
+      id: e.id, title: e.title, impact: e.impact, when: e.when,
+      forecast: e.forecast, previous: e.previous, actual: e.actual,
+      dir: e.dir, talk: e.talk,
+      ts: e.ts,                                  // ให้แอปนับถอยหลังเองได้ ไม่เพี้ยนตอนอ่านจากแคช
+      mins: Math.round((e.ts - now) / 60000)
+    });
+  }
+  return out;
+}
+
+/* ---------- แจ้งเตือนเข้า Telegram ก่อนถึงเวลาข่าว ---------- */
+
+/** ▶ รันครั้งเดียวเพื่อเปิดการเตือนข่าว (ตรวจทุก 5 นาที) */
+function installNewsTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'newsWatch') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('newsWatch').timeBased().everyMinutes(5).create();
+  readNews_(true);
+  tgSend([
+    '📰 <b>เปิดการเตือนข่าวเศรษฐกิจแล้ว</b>',
+    '',
+    'เตือนล่วงหน้า ' + NEWS_ALERT_MIN + ' นาที',
+    'เฉพาะข่าว USD ระดับแรง (High) ที่มีผลกับทอง'
+  ].join('\n'));
+  SpreadsheetApp.getActive().toast('เปิดการเตือนข่าวแล้ว', 'GTPro', 8);
+}
+
+/** trigger ทุก 5 นาที — ข่าวแรงที่ใกล้ถึงเวลาและยังไม่เคยเตือน → ส่ง Telegram */
+function newsWatch() {
+  var list = readNews_(false);
+  var now = Date.now();
+  var props = PropertiesService.getScriptProperties();
+  var sent = {};
+  try { sent = JSON.parse(props.getProperty('NEWS_SENT') || '{}'); } catch (e) { sent = {}; }
+
+  var changed = false;
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i];
+    if (e.impact !== 'High') continue;
+    var mins = Math.round((e.ts - now) / 60000);
+    if (mins < 0 || mins > NEWS_ALERT_MIN) continue;
+    if (sent[e.id]) continue;
+
+    tgSend(newsMessage_(e, mins));
+    sent[e.id] = now;
+    changed = true;
+  }
+
+  // ล้างของเก่ากว่า 2 วัน กัน property บวม
+  for (var k in sent) {
+    if (now - sent[k] > 2 * 24 * 3600 * 1000) { delete sent[k]; changed = true; }
+  }
+  if (changed) props.setProperty('NEWS_SENT', JSON.stringify(sent));
+}
+
+function newsMessage_(e, mins) {
+  var bias =
+    e.dir === -1 ? 'ออกมา <b>สูงกว่าคาด</b> → ทองมีแนวโน้ม <b>ลง</b> 🔴\n' +
+                   'ออกมา <b>ต่ำกว่าคาด</b> → ทองมีแนวโน้ม <b>ขึ้น</b> 🟢'
+  : e.dir === 1  ? 'ออกมา <b>สูงกว่าคาด</b> → ทองมีแนวโน้ม <b>ขึ้น</b> 🟢\n' +
+                   'ออกมา <b>ต่ำกว่าคาด</b> → ทองมีแนวโน้ม <b>ลง</b> 🔴'
+  :                'ต้องฟังเนื้อหา ตีความจากตัวเลขอย่างเดียวไม่ได้';
+
+  return [
+    '⚠️ <b>อีก ' + fmt(mins, 0) + ' นาที มีข่าวแรง</b>',
+    '',
+    '<b>' + e.title + '</b>',
+    '🕐 ' + e.when + ' น.',
+    (e.forecast ? 'คาดการณ์ : ' + e.forecast : null),
+    (e.previous ? 'ครั้งก่อน : ' + e.previous : null),
+    '───────────────',
+    bias,
+    '',
+    '<i>ช่วงข่าวแรงราคาเหวี่ยง สเปรดกว้าง ระวังไม้ที่เปิดค้างไว้</i>'
+  ].filter(function (x) { return x; }).join('\n');
+}
+
+/** ทดสอบเอง — ดูว่าดึงข่าวได้กี่รายการ อันถัดไปคืออะไร */
+function testNews() {
+  var l = newsForApp_();
+  var next = null;
+  for (var i = 0; i < l.length; i++) if (l[i].mins >= 0) { next = l[i]; break; }
+  SpreadsheetApp.getUi().alert(
+    'ข่าวเศรษฐกิจ',
+    'ดึงมาได้ ' + l.length + ' รายการ (USD ระดับ High/Medium)\n\n' +
+    (next ? 'อันถัดไป: ' + next.title + '\n' + next.when + ' น. (อีก ' +
+            next.mins + ' นาที)\nระดับ ' + next.impact
+          : 'ไม่มีข่าวข้างหน้าในช่วง 7 วัน'),
+    SpreadsheetApp.getUi().ButtonSet.OK);
 }
 

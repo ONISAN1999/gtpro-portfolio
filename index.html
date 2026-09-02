@@ -142,12 +142,17 @@ tbody tr+tr td{border-top:1px solid var(--grid)}
 nav{position:fixed;left:0;right:0;bottom:0;z-index:30;
   background:rgba(13,13,16,.94);backdrop-filter:blur(12px);
   border-top:1px solid var(--ring);padding-bottom:env(safe-area-inset-bottom)}
-.tabs{display:grid;grid-template-columns:repeat(5,1fr);max-width:720px;margin:0 auto}
-.tab{display:flex;flex-direction:column;align-items:center;gap:3px;
-  padding:9px 2px 8px;color:var(--muted);font-size:10.5px;min-height:56px;
+.tabs{display:grid;grid-template-columns:repeat(6,1fr);max-width:720px;margin:0 auto}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;
+  padding:9px 1px 8px;color:var(--muted);font-size:10px;min-height:56px;
   white-space:nowrap;overflow:hidden}
 .tab svg{width:20px;height:20px;flex-shrink:0}
 .tab.on{color:var(--profit)}
+/* จุดแดงบนแท็บข่าว เมื่อมีข่าวแรงใกล้ถึงเวลา */
+.tab .dot{position:absolute;top:7px;right:calc(50% - 16px);width:8px;height:8px;
+  border-radius:50%;background:var(--loss);display:none;
+  box-shadow:0 0 0 2px rgba(13,13,16,.9)}
+.tab .dot.on{display:block}
 
 /* ── หน้าตั้งค่า / สถานะ ────────────────────────────────── */
 .card{background:var(--surface);border:1px solid var(--ring);
@@ -185,10 +190,6 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 .hitem .when{font-size:11.5px;color:var(--muted);margin-left:auto;text-align:right;
   line-height:1.35;flex-shrink:0}
 .pnl{font-weight:700;font-size:15px;font-variant-numeric:tabular-nums}
-.camera{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--equity);
-  background:rgba(57,135,229,.13);border:1px solid rgba(57,135,229,.34);
-  border-radius:8px;padding:4px 9px;margin-top:9px}
-.camera[disabled]{opacity:.55}
 .reason{font-size:11px;color:var(--muted);border:1px solid var(--ring);
   border-radius:6px;padding:1px 6px}
 .thumb{margin-top:9px;border-radius:10px;overflow:hidden;border:1px solid var(--ring);
@@ -252,6 +253,62 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 .skel{background:var(--surface);border-radius:var(--radius);height:76px;
   animation:p 1.4s ease-in-out infinite}
 @keyframes p{0%,100%{opacity:.5}50%{opacity:.85}}
+
+/* ── ข่าวเศรษฐกิจ ───────────────────────────────────────── */
+.daysep{font-size:12.5px;color:var(--muted);font-weight:600;margin:16px 0 8px;
+  display:flex;align-items:center;gap:9px}
+.daysep::after{content:"";flex:1;height:1px;background:var(--grid)}
+.daysep.first{margin-top:4px}
+.nitem{background:var(--surface);border:1px solid var(--ring);border-radius:var(--radius);
+  padding:11px 13px;margin-bottom:8px}
+.nitem.soon{border-color:rgba(240,192,74,.55);background:rgba(240,192,74,.06)}
+.nitem.past{opacity:.5}
+.nhead{display:flex;align-items:baseline;gap:9px}
+.ntime{font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;flex:none;width:52px}
+.ntitle{font-size:13.5px;line-height:1.45;flex:1}
+.imp{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;flex:none;
+  letter-spacing:.03em}
+.imp.High{background:rgba(208,59,59,.18);color:#ff8a8a}
+.imp.Medium{background:rgba(240,192,74,.15);color:#f0c04a}
+.nfig{display:flex;gap:14px;margin-top:7px;font-size:11.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.nfig b{color:var(--ink-2);font-weight:600}
+.nbias{margin-top:8px;font-size:11.5px;line-height:1.65;color:var(--ink-2);
+  border-top:1px solid var(--grid);padding-top:7px}
+.nbias .up{color:var(--profit);font-weight:700}
+.nbias .dn{color:var(--loss);font-weight:700}
+.ncount{font-size:11.5px;color:#f0c04a;font-weight:700;margin-top:6px}
+
+/* ── แถบเตือนข่าวใกล้ถึงเวลา ────────────────────────────── */
+.alert{display:none;margin:10px 0 0;
+  background:rgba(208,59,59,.14);border:1px solid rgba(208,59,59,.5);
+  border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.55;
+  animation:pulse 2.2s ease-in-out infinite}
+.alert.on{display:block}
+.alert b{color:#ffb4b4}
+.alert .go{color:#8dc0f5;text-decoration:underline;text-underline-offset:3px}
+@keyframes pulse{0%,100%{border-color:rgba(208,59,59,.5)}
+  50%{border-color:rgba(208,59,59,.95)}}
+
+/* ── แถบอัปเดตแอป ───────────────────────────────────────── */
+.upd{display:none;margin:10px 0 0;background:rgba(27,175,122,.12);
+  border:1px solid rgba(27,175,122,.45);border-radius:12px;padding:11px 13px;
+  font-size:12.5px;line-height:1.6}
+.upd.on{display:block}
+.upd .r{display:flex;gap:8px;margin-top:9px}
+.upd .r button{flex:1;padding:9px;border-radius:10px;font-size:12.5px;font-weight:700;
+  background:var(--profit);color:#05130d}
+.upd .r button.skip{background:var(--surface-2);color:var(--muted);font-weight:500}
+
+/* ── ฟีดแบ็กตอนกด: ระลอกคลื่น + ย่อตัว ──────────────────── */
+@media (prefers-reduced-motion:no-preference){
+  .tapz{animation:tapz .17s ease-out}
+}
+@keyframes tapz{0%{transform:scale(1)}45%{transform:scale(.955)}100%{transform:scale(1)}}
+.ripple{position:fixed;pointer-events:none;z-index:999;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,.42) 0%,rgba(255,255,255,0) 68%);
+  transform:translate(-50%,-50%) scale(0);animation:rip .42s ease-out forwards}
+@keyframes rip{to{transform:translate(-50%,-50%) scale(1);opacity:0}}
 </style>
 </head>
 <body>
@@ -277,6 +334,12 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 </header>
 
 <main class="wrap">
+
+  <!-- เตือนข่าวแรงใกล้ถึงเวลา -->
+  <div class="alert" id="newsAlert"></div>
+
+  <!-- มีแอปเวอร์ชันใหม่ -->
+  <div class="upd" id="updBar"></div>
 
   <div class="testbar" id="testbar">
     🧪 <b>กำลังดูกระเป๋า TEST</b> — ไม้ backtest ทั้งหมด แยกจากสถิติจริงคนละชุด
@@ -368,6 +431,15 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
     </div>
   </section>
 
+  <!-- ── ข่าวเศรษฐกิจ ── -->
+  <section class="page" id="p-news">
+    <div class="hint" style="margin:2px 0 0;line-height:1.65">
+      ข่าวสหรัฐฯ (USD) ระดับแรงและปานกลาง — ตัวที่ขยับราคาทองมากที่สุด
+      เวลาแสดงเป็นเวลาไทย
+    </div>
+    <div id="newsList"><div class="skel" style="margin-top:12px"></div></div>
+  </section>
+
   <!-- ── ตั้งค่า ── -->
   <section class="page" id="p-set">
     <div class="card">
@@ -382,6 +454,21 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
       <button class="btn ghost" id="clear">ล้างการตั้งค่า</button>
       <div class="hint" id="setinfo"></div>
     </div>
+
+    <div class="card">
+      <h2 style="font-size:15px;margin-bottom:4px">เสียงและการสั่น</h2>
+      <div class="hint" style="margin-top:2px">เสียงคลิกและการสั่นสั้น ๆ ทุกครั้งที่กดปุ่ม</div>
+      <div class="seg" id="f-snd" style="margin-top:12px">
+        <button data-v="on" class="on">เปิด</button>
+        <button data-v="off">ปิด</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:15px;margin-bottom:4px">เกี่ยวกับแอป</h2>
+      <div class="hint" style="margin-top:2px" id="verinfo">เวอร์ชัน —</div>
+      <button class="btn ghost" id="chkupd">ตรวจหาเวอร์ชันใหม่</button>
+    </div>
   </section>
 
 </main>
@@ -392,6 +479,7 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
     <button class="tab" data-p="eq"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 3 3 8-8"/><path d="M16 7h5v5"/></svg>Equity</button>
     <button class="tab" data-p="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="3"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>ไม้เปิด</button>
     <button class="tab" data-p="hist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M3 17l4.5-4 3.5 3 3-2.5L21 18"/></svg>ไม้เทรด</button>
+    <button class="tab" data-p="news"><span class="dot" id="newsDot"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h13a2 2 0 012 2v10a2 2 0 002 2H5a2 2 0 01-2-2V6a1 1 0 011-1z"/><path d="M19 7h1a1 1 0 011 1v9a2 2 0 01-2 2"/><path d="M7 9h7M7 13h7M7 17h4"/></svg>ข่าว</button>
     <button class="tab" data-p="set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1v.2a2 2 0 11-4 0v-.1A1.6 1.6 0 007 19.4a1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.6 1.6 0 002.5 14H2.3a2 2 0 110-4h.1A1.6 1.6 0 004.6 7a1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H9a1.6 1.6 0 001-1.5V.8a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V9a1.6 1.6 0 001.5 1h.2a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/></svg>ตั้งค่า</button>
   </div>
 </nav>
@@ -602,7 +690,7 @@ function render(){
   $('#testbar').classList.toggle('on', mode==='TEST');
   document.querySelectorAll('.modesw button')
     .forEach(b=>b.classList.toggle('on', b.dataset.m===mode));
-  renderCal(); renderEq(); renderOpen(); renderHist();
+  renderCal(); renderEq(); renderOpen(); renderHist(); renderNews(); newsTick();
 }
 
 /* ── ปฏิทิน ── */
@@ -1120,11 +1208,211 @@ $('#openList').onclick = async e => {
            $('#lb').classList.add('on'); }
 };
 
+/* ══════════ ข่าวเศรษฐกิจ ══════════ */
+const TH_DAY=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสฯ','ศุกร์','เสาร์'];
+const TH_MON_S=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.',
+                'ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+const ALERT_MIN=60;        /* เตือนเมื่อข่าวแรงเหลือไม่ถึงกี่นาที (esc() ประกาศไว้ด้านบนแล้ว) */
+
+/* นาทีที่เหลือ — คิดจาก ts ที่เซิร์ฟเวอร์ส่งมา จะได้ไม่เพี้ยนตอนข้อมูลมาจากแคช */
+function newsMins(e){
+  if(e.ts) return Math.round((e.ts-Date.now())/60000);
+  return (e.mins==null)?9999:e.mins;
+}
+/* 'yyyy-MM-dd HH:mm' → ส่วนวัน / ส่วนเวลา */
+const nDate=e=>String(e.when||'').slice(0,10);
+const nTime=e=>String(e.when||'').slice(11,16);
+
+function dayLabel(ymd){
+  const [Y,M,D]=ymd.split('-').map(Number);
+  const d=new Date(Y,M-1,D);
+  const t=new Date(); t.setHours(0,0,0,0);
+  const diff=Math.round((d-t)/86400000);
+  const stamp=`${TH_DAY[d.getDay()]} ${D} ${TH_MON_S[M-1]}`;
+  if(diff===0) return 'วันนี้ · '+stamp;
+  if(diff===1) return 'พรุ่งนี้ · '+stamp;
+  if(diff===-1) return 'เมื่อวาน · '+stamp;
+  return stamp;
+}
+
+/* ผลต่อทองเมื่อตัวเลขออกมาสูงกว่าคาด */
+function biasHtml(e){
+  if(e.dir===-1) return 'ออกมา<b>สูงกว่าคาด</b> → ทอง<span class="dn">มีแนวโน้มลง</span>'+
+                        ' &nbsp;·&nbsp; ต่ำกว่าคาด → ทอง<span class="up">ขึ้น</span>';
+  if(e.dir===1)  return 'ออกมา<b>สูงกว่าคาด</b> → ทอง<span class="up">มีแนวโน้มขึ้น</span>'+
+                        ' &nbsp;·&nbsp; ต่ำกว่าคาด → ทอง<span class="dn">ลง</span>';
+  if(e.talk)     return 'ไม่มีตัวเลข ต้องฟังเนื้อหา — โทนเข้มงวด (hawkish) ทอง'+
+                        '<span class="dn">ลง</span> · โทนผ่อนคลาย (dovish) ทอง'+
+                        '<span class="up">ขึ้น</span>';
+  return 'ตีความจากตัวเลขอย่างเดียวไม่ได้ ต้องดูภาพรวมประกอบ';
+}
+
+function countLabel(m){
+  if(m<0)  return null;
+  if(m===0) return 'กำลังประกาศ';
+  if(m<60) return 'อีก '+fmt(m,0)+' นาที';
+  if(m<24*60){ const h=Math.floor(m/60); return 'อีก '+fmt(h,0)+' ชม. '+fmt(m-h*60,0)+' นาที'; }
+  return null;
+}
+
+function renderNews(){
+  const box=$('#newsList');
+  const list=(data&&data.news)||[];
+  if(!list.length){
+    box.innerHTML='<div class="empty">ยังไม่มีข้อมูลข่าว<br>'+
+      '<span style="font-size:12px">เปิดเมนู GTPro › 7 ในชีต แล้วรีเฟรชอีกครั้ง</span></div>';
+    return;
+  }
+  let html='', day='', first=true;
+  list.forEach(e=>{
+    const d=nDate(e);
+    if(d!==day){
+      day=d;
+      html+='<div class="daysep'+(first?' first':'')+'">'+esc(dayLabel(d))+'</div>';
+      first=false;
+    }
+    const m=newsMins(e);
+    const soon=(m>=-10&&m<=ALERT_MIN&&e.impact==='High');
+    const cl=m<-10?' past':(soon?' soon':'');
+    const cnt=countLabel(m);
+    const figs=[];
+    if(e.actual)   figs.push('จริง <b>'+esc(e.actual)+'</b>');
+    if(e.forecast) figs.push('คาด <b>'+esc(e.forecast)+'</b>');
+    if(e.previous) figs.push('ครั้งก่อน <b>'+esc(e.previous)+'</b>');
+    html+=
+      '<div class="nitem'+cl+'">'+
+        '<div class="nhead">'+
+          '<div class="ntime">'+esc(nTime(e))+'</div>'+
+          '<div class="ntitle">'+esc(e.title)+'</div>'+
+          '<span class="imp '+(e.impact==='High'?'High':'Medium')+'">'+
+            (e.impact==='High'?'แรง':'ปานกลาง')+'</span>'+
+        '</div>'+
+        (figs.length?'<div class="nfig">'+figs.join('')+'</div>':'')+
+        (cnt&&e.impact==='High'?'<div class="ncount">⏱ '+esc(cnt)+'</div>':'')+
+        '<div class="nbias">'+biasHtml(e)+'</div>'+
+      '</div>';
+  });
+  box.innerHTML=html;
+}
+
+/* ── แถบเตือน + จุดแดงบนแท็บ — เดินทุก 30 วินาที ── */
+function newsTick(){
+  const bar=$('#newsAlert'), dot=$('#newsDot');
+  const list=(data&&data.news)||[];
+  let hit=null;
+  for(let i=0;i<list.length;i++){
+    const e=list[i]; if(e.impact!=='High') continue;
+    const m=newsMins(e);
+    if(m>=-10&&m<=ALERT_MIN){ hit={e,m}; break; }
+  }
+  if(!hit){
+    bar.classList.remove('on'); dot.classList.remove('on'); return;
+  }
+  const cnt=hit.m<0?'<b>กำลังประกาศอยู่</b>':
+            hit.m===0?'<b>ถึงเวลาประกาศแล้ว</b>':
+            'อีก <b>'+fmt(hit.m,0)+' นาที</b>';
+  bar.innerHTML='⚠️ '+cnt+' — '+esc(hit.e.title)+
+    ' <span style="color:var(--muted)">'+esc(nTime(hit.e))+' น.</span><br>'+
+    '<span style="color:var(--muted)">ช่วงข่าวแรงราคาเหวี่ยง สเปรดกว้าง ระวังไม้ที่เปิดค้าง</span> '+
+    '<button class="go" id="alertGo">ดูข่าว</button>';
+  bar.classList.add('on'); dot.classList.add('on');
+  const g=$('#alertGo'); if(g) g.onclick=()=>go('news');
+}
+setInterval(()=>{ newsTick(); if($('#p-news').classList.contains('on')) renderNews(); },30000);
+
+/* ══════════ เสียง + แอนิเมชันตอนกด ══════════ */
+const SND='gtpro.snd';
+let sndOn=localStorage.getItem(SND)!=='0';
+let actx=null;
+
+function clickSound(){
+  if(!sndOn) return;
+  try{
+    if(!actx){
+      const AC=window.AudioContext||window.webkitAudioContext;
+      if(!AC) return;
+      actx=new AC();
+    }
+    if(actx.state==='suspended') actx.resume();
+    const t=actx.currentTime;
+    /* เสียงคลิกสั้น ๆ: หัวเสียงแหลมแล้วดับเร็ว ไม่รบกวนหู */
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type='triangle';
+    o.frequency.setValueAtTime(1750,t);
+    o.frequency.exponentialRampToValueAtTime(760,t+0.035);
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(0.085,t+0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.055);
+    o.connect(g).connect(actx.destination);
+    o.start(t); o.stop(t+0.06);
+  }catch(err){}
+}
+
+function buzz(){
+  if(!sndOn) return;
+  try{ if(window.GTPro&&GTPro.tap) return GTPro.tap(); }catch(e){}
+  try{ if(navigator.vibrate) navigator.vibrate(9); }catch(e){}
+}
+
+function ripple(x,y){
+  const d=document.createElement('span');
+  d.className='ripple';
+  d.style.cssText+=`left:${x}px;top:${y}px;width:104px;height:104px`;
+  document.body.appendChild(d);
+  setTimeout(()=>d.remove(),430);
+}
+
+const TAPSEL='button,a[href],.cell.has,.toggle,[data-a],.thumb img,.seg button,.modesw button';
+addEventListener('pointerdown',e=>{
+  const el=e.target.closest(TAPSEL);
+  if(!el||el.disabled) return;
+  clickSound(); buzz();
+  ripple(e.clientX,e.clientY);
+  el.classList.remove('tapz');
+  void el.offsetWidth;                 /* บังคับให้เริ่มแอนิเมชันใหม่ทุกครั้ง */
+  el.classList.add('tapz');
+  setTimeout(()=>el.classList.remove('tapz'),200);
+},{passive:true});
+
+/* ══════════ เช็กเวอร์ชันใหม่ของแอป ══════════ */
+const SKIP='gtpro.skipver';
+async function checkUpdate(){
+  let cur=0;
+  try{ cur=(window.GTPro&&GTPro.versionCode)?GTPro.versionCode():0; }catch(e){}
+  if(!cur) return;                      /* เปิดในเบราว์เซอร์ ไม่ต้องชวนอัปเดต */
+  try{
+    const r=await fetch('version.json',{cache:'no-store'});
+    const v=await r.json();
+    if(!v||!v.versionCode||v.versionCode<=cur) return;
+    if(String(localStorage.getItem(SKIP)||'')===String(v.versionCode)) return;
+    const bar=$('#updBar');
+    bar.innerHTML=
+      '🎉 <b>มีเวอร์ชันใหม่ '+esc(v.versionName||v.versionCode)+'</b>'+
+      ' <span style="color:var(--muted)">(ตอนนี้ '+esc(GTPro.version?GTPro.version():cur)+')</span>'+
+      (v.notes?'<br><span style="color:var(--ink-2)">'+esc(v.notes)+'</span>':'')+
+      '<br><span style="color:var(--muted);font-size:11.5px">'+
+      'ติดตั้งทับตัวเดิมได้เลย ข้อมูลและการตั้งค่าไม่หาย</span>'+
+      '<div class="r"><button id="updGo">ดาวน์โหลด</button>'+
+      '<button class="skip" id="updSkip">ไว้ก่อน</button></div>';
+    bar.classList.add('on');
+    $('#updGo').onclick=()=>{
+      try{ GTPro.openUrl(v.apk); }catch(e){ location.href=v.apk; }
+    };
+    $('#updSkip').onclick=()=>{
+      localStorage.setItem(SKIP,String(v.versionCode));
+      bar.classList.remove('on');
+    };
+  }catch(e){}
+}
+
 /* ══ นำทาง ══ */
 function go(p){
   document.querySelectorAll('.page').forEach(e=>e.classList.toggle('on',e.id==='p-'+p));
   document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.p===p));
   if(p==='eq') setTimeout(renderEq,30);
+  if(p==='news') renderNews();
+  /* หน้าข่าว/ตั้งค่าไม่ได้ใช้ปุ่มบันทึกไม้ — ซ่อนไว้จะได้ไม่บังเนื้อหา */
+  $('#fab').style.display = (p==='news'||p==='set') ? 'none' : 'grid';
   window.scrollTo(0,0);
 }
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.p));
@@ -1194,7 +1482,39 @@ $('#clear').onclick=()=>{
   $('#setinfo').textContent='ล้างแล้ว';
 };
 
+/* ── สวิตช์เสียง ── */
+function paintSnd(){
+  document.querySelectorAll('#f-snd button')
+    .forEach(b=>b.classList.toggle('on', (b.dataset.v==='on')===sndOn));
+}
+document.querySelectorAll('#f-snd button').forEach(b=>b.onclick=()=>{
+  sndOn=b.dataset.v==='on';
+  localStorage.setItem(SND, sndOn?'1':'0');
+  paintSnd();
+  if(sndOn) clickSound();
+});
+
+/* ── เวอร์ชัน ── */
+(function(){
+  let v='—', inApp=false;
+  try{ if(window.GTPro&&GTPro.version){ v=GTPro.version()+' (build '+GTPro.versionCode()+')'; inApp=true; } }catch(e){}
+  $('#verinfo').innerHTML = inApp
+    ? 'เวอร์ชันที่ติดตั้ง <b>'+esc(v)+'</b>'
+    : 'กำลังเปิดในเบราว์เซอร์ — การอัปเดตอัตโนมัติใช้ได้เฉพาะเมื่อเปิดจากแอปที่ติดตั้งไว้';
+  $('#chkupd').onclick=async()=>{
+    localStorage.removeItem(SKIP);
+    $('#chkupd').textContent='กำลังตรวจ…';
+    await checkUpdate();
+    $('#chkupd').textContent='ตรวจหาเวอร์ชันใหม่';
+    if(!$('#updBar').classList.contains('on')){
+      $('#verinfo').innerHTML+='<br><span style="color:var(--profit)">ใช้เวอร์ชันล่าสุดอยู่แล้ว</span>';
+    }else{ go('cal'); }
+  };
+})();
+
 /* ══ เริ่มทำงาน ══ */
+paintSnd();
+checkUpdate();
 cfg=loadCfg();
 if(cfg){ $('#url').value=cfg.url||''; $('#key').value=cfg.key||''; }
 const cached=localStorage.getItem(dataKey())||localStorage.getItem(LSD);

@@ -1,7 +1,7 @@
 /* GTPro Portfolio — service worker
    เปลือกแอปแคชไว้ให้เปิดได้แม้ไม่มีเน็ต ส่วนข้อมูลดึงสดเสมอ
    (ข้อมูลล่าสุดถูกเก็บใน localStorage โดยตัวหน้าเว็บเอง) */
-const V = 'gtpro-v4';
+const V = 'gtpro-v5';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -16,12 +16,25 @@ self.addEventListener('activate', e => {
   );
 });
 
+/* แคชเฉพาะ "เปลือกแอป" เท่านั้น — ไฟล์นิ่ง ๆ ที่อยู่โดเมนเดียวกันและไม่มี query string
+   อย่างอื่น (คำขอข้อมูล, version.json, รูปจากไดรฟ์) ปล่อยผ่านให้ดึงสดทุกครั้ง
+   ไม่งั้นจะได้ตัวเลขเก่าค้างโดยไม่รู้ตัว */
+function isShell(url) {
+  if (url.origin !== self.location.origin) return false;
+  if (url.search) return false;                       // มี ?… = คำขอข้อมูล
+  if (url.pathname.indexOf('version.json') >= 0) return false;
+  if (url.pathname.indexOf('/releases/') >= 0) return false;
+  return /\.(html|js|css|png|svg|webmanifest|woff2?)$/.test(url.pathname) ||
+         url.pathname.endsWith('/');
+}
+
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
 
-  // อย่าแคชคำขอข้อมูล — ต้องได้ตัวเลขล่าสุดเสมอ
-  if (req.url.includes('script.google.com') || req.url.includes('googleusercontent.com')) return;
+  let url;
+  try { url = new URL(req.url); } catch (err) { return; }
+  if (!isShell(url)) return;
 
   e.respondWith(
     caches.match(req).then(hit =>
