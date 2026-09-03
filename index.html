@@ -57,6 +57,24 @@ header{
   color:var(--ink-2);border:1px solid var(--ring)}
 .iconbtn:active{background:var(--surface-2)}
 .iconbtn svg{width:18px;height:18px}
+
+/* ── ปุ่มรีเฟรช: วงแหวน + % ตอนกำลังดึงข้อมูล ─────────────── */
+#refresh{position:relative}
+#refresh .rring{position:absolute;inset:0;width:100%;height:100%;
+  transform:rotate(-90deg);display:none}
+#refresh .rring circle{fill:none;stroke-width:2.6}
+#refresh .rring .trk{stroke:var(--grid)}
+#refresh .rring .bar{stroke:var(--profit);stroke-linecap:round;
+  stroke-dasharray:97.4;stroke-dashoffset:97.4;transition:stroke-dashoffset .22s ease}
+#refresh .rpct{position:absolute;inset:0;display:none;place-items:center;
+  font-size:9.5px;font-weight:700;color:var(--profit);font-variant-numeric:tabular-nums;
+  letter-spacing:-.03em}
+#refresh.loading .ricon{opacity:0}
+#refresh.loading .rring{display:block}
+#refresh.loading .rpct{display:grid}
+#refresh.done .rring .bar{stroke:var(--profit)}
+#refresh.fail .rring .bar{stroke:var(--loss)}
+#refresh.fail .rpct{color:var(--loss)}
 .stale{font-size:12px;color:var(--muted);padding:0 0 8px;display:none}
 .stale.on{display:block}
 
@@ -352,8 +370,13 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
     <div class="brand">GTPro Portfolio</div>
     <div class="spacer"></div>
     <button class="iconbtn" id="refresh" aria-label="รีเฟรช">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      <svg class="ricon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+      <svg class="rring" viewBox="0 0 36 36" aria-hidden="true">
+        <circle class="trk" cx="18" cy="18" r="15.5"/>
+        <circle class="bar" cx="18" cy="18" r="15.5"/>
+      </svg>
+      <span class="rpct" id="rpct"></span>
     </button>
   </div>
   <div class="wrap"><div class="stale" id="stale"></div></div>
@@ -500,6 +523,8 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
       <h2 style="font-size:15px;margin-bottom:4px">เกี่ยวกับแอป</h2>
       <div class="hint" style="margin-top:2px" id="verinfo">เวอร์ชัน —</div>
       <button class="btn ghost" id="chkupd">ตรวจหาเวอร์ชันใหม่</button>
+      <button class="btn ghost" id="hardreload">ล้างแคชแล้วโหลดหน้าใหม่</button>
+      <div class="hint">ใช้เมื่อหน้าตาแอปยังเป็นแบบเก่าทั้งที่มีของใหม่แล้ว</div>
     </div>
   </section>
 
@@ -640,6 +665,7 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 'use strict';
 const TH_MONTH=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
   'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+const BUILD='2026-09-03.3';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
 const LS='gtpro.cfg', LSD='gtpro.data';
 const $=s=>document.querySelector(s);
 
@@ -662,9 +688,64 @@ function loadCfg(){ try{return JSON.parse(localStorage.getItem(LS)||'null')}catc
 function saveCfg(c){ localStorage.setItem(LS,JSON.stringify(c)); cfg=c; }
 
 /* ══ ดึงข้อมูล — ลอง fetch ก่อน ถ้าติด CORS ค่อยใช้ JSONP ══ */
-function api(m){
+/* ══ ตัวบอกความคืบหน้าบนปุ่มรีเฟรช ══
+   อ่านจำนวนไบต์ที่โหลดได้จริงเมื่อเซิร์ฟเวอร์บอกขนาดมา (Content-Length)
+   ถ้าไม่บอก (Apps Script มักส่งแบบ chunked) จะไล่ % ตามขั้นตอนแทน
+   แล้วค่อย ๆ คืบไปเรื่อย ๆ เพื่อไม่ให้ดูค้าง — แต่ไม่แตะ 100% จนกว่าจะได้ข้อมูลจริง */
+const ring=$('#refresh'), rbar=ring.querySelector('.bar'), rtxt=$('#rpct');
+const RING_LEN=97.4;
+let creepT=null;
+
+function setPct(p){
+  p=Math.max(0,Math.min(1,p));
+  rbar.style.strokeDashoffset=String(RING_LEN*(1-p));
+  rtxt.textContent=Math.round(p*100)+'%';
+}
+function progStart(){
+  clearInterval(creepT);
+  ring.classList.remove('done','fail');
+  ring.classList.add('loading');
+  setPct(0.04);
+}
+/* คืบเองช้า ๆ ไปหาเพดาน ใช้ตอนไม่รู้ขนาดข้อมูล */
+function progCreep(from,ceil,stepMs){
+  clearInterval(creepT);
+  let p=from;
+  creepT=setInterval(()=>{ p+=(ceil-p)*0.12; if(p>ceil-0.005){clearInterval(creepT);} setPct(p); }, stepMs||220);
+}
+function progEnd(okv){
+  clearInterval(creepT);
+  setPct(1);
+  ring.classList.toggle('fail',!okv);
+  ring.classList.add('done');
+  setTimeout(()=>{ ring.classList.remove('loading','done','fail'); }, okv?520:1400);
+}
+
+/* ดึง JSON พร้อมรายงานความคืบหน้า */
+async function fetchJSON(u,onp){
+  const r=await fetch(u,{redirect:'follow'});
+  onp&&onp(0.22,'ต่อสำเร็จ');
+  const len=+(r.headers.get('content-length')||0);
+  if(!r.body||!len||!r.body.getReader){          /* ไม่รู้ขนาด → ปล่อยให้ creep */
+    const t=await r.text();
+    onp&&onp(0.93,'กำลังอ่านข้อมูล');
+    return JSON.parse(t);
+  }
+  const rd=r.body.getReader(); const parts=[]; let got=0;
+  for(;;){
+    const {done,value}=await rd.read();
+    if(done) break;
+    parts.push(value); got+=value.length;
+    onp&&onp(0.22+0.71*Math.min(1,got/len),'กำลังโหลด');
+  }
+  let all=new Uint8Array(got), at=0;
+  for(const p of parts){ all.set(p,at); at+=p.length; }
+  return JSON.parse(new TextDecoder('utf-8').decode(all));
+}
+
+function api(m,onp){
   const u=`${cfg.url}?api=1&key=${encodeURIComponent(cfg.key)}&month=${m||''}&mode=${mode}`;
-  return fetch(u,{redirect:'follow'}).then(r=>r.json()).catch(()=>jsonp(u));
+  return fetchJSON(u,onp).catch(()=>jsonp(u));
 }
 /* ดึงรูปชาร์ตทีละใบ — ฝั่ง Apps Script ส่งกลับเป็น base64 ไฟล์จึงไม่ต้องแชร์สาธารณะ */
 function apiImg(id){
@@ -692,15 +773,23 @@ function jsonp(u){
 
 async function refresh(){
   if(!cfg||!cfg.url){ go('set'); return; }
-  $('#refresh').style.opacity=.4;
+  progStart();
+  progCreep(0.04, 0.70, 170);          /* ช่วงรอเซิร์ฟเวอร์ตอบ — คืบเรื่อย ๆ ไม่ให้ดูค้าง */
   try{
-    const d=await api(month);
+    const d=await api(month,(p)=>{
+      clearInterval(creepT);
+      setPct(p);
+      if(p<0.9) progCreep(p, 0.92, 200); /* ไม่รู้ขนาด → คืบต่อแต่ไม่ถึง 100 */
+    });
     if(!d||d.ok===false) throw new Error(d&&d.error||'ตอบกลับผิดรูปแบบ');
+    clearInterval(creepT); setPct(0.97);
     data=d;
     try{ localStorage.setItem(dataKey(),JSON.stringify({at:Date.now(),d})); }catch(e){}
     $('#stale').classList.remove('on');
     render();
+    progEnd(true);
   }catch(err){
+    progEnd(false);
     const c=localStorage.getItem(dataKey());
     if(c){
       const o=JSON.parse(c); data=o.d;
@@ -1686,9 +1775,27 @@ document.querySelectorAll('#f-snd button').forEach(b=>b.onclick=()=>{
 (function(){
   let v='—', inApp=false;
   try{ if(window.GTPro&&GTPro.version){ v=GTPro.version()+' (build '+GTPro.versionCode()+')'; inApp=true; } }catch(e){}
-  $('#verinfo').innerHTML = inApp
+  $('#verinfo').innerHTML = (inApp
     ? 'เวอร์ชันที่ติดตั้ง <b>'+esc(v)+'</b>'
-    : 'กำลังเปิดในเบราว์เซอร์ — การอัปเดตอัตโนมัติใช้ได้เฉพาะเมื่อเปิดจากแอปที่ติดตั้งไว้';
+    : 'กำลังเปิดในเบราว์เซอร์ — การอัปเดตอัตโนมัติใช้ได้เฉพาะเมื่อเปิดจากแอปที่ติดตั้งไว้')
+    + '<br>หน้าเว็บบิลด์ <b>'+esc(BUILD)+'</b>';
+  /* ล้าง service worker + แคชทั้งหมด แล้วโหลดใหม่แบบ cache-busting
+     ไว้แก้กรณีเครื่องยังค้างหน้าเว็บเวอร์ชันเก่า */
+  $('#hardreload').onclick=async()=>{
+    const b=$('#hardreload'); b.textContent='กำลังล้าง…';
+    try{
+      if(navigator.serviceWorker&&navigator.serviceWorker.getRegistrations){
+        const rs=await navigator.serviceWorker.getRegistrations();
+        for(const r of rs){ try{ await r.unregister(); }catch(e){} }
+      }
+    }catch(e){}
+    try{
+      if(window.caches){ for(const k of await caches.keys()) await caches.delete(k); }
+    }catch(e){}
+    const u=location.href.split('#')[0].split('?')[0];
+    location.replace(u+'?fresh='+Date.now());
+  };
+
   $('#chkupd').onclick=async()=>{
     localStorage.removeItem(SKIP);
     $('#chkupd').textContent='กำลังตรวจ…';
