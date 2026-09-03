@@ -293,14 +293,23 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 .nres.flat{color:var(--ink-2)}
 
 /* แถวปุ่มท้ายการ์ดข่าว */
-.nact{display:flex;justify-content:flex-end;margin-top:9px}
+.nact{display:flex;justify-content:flex-end;gap:7px;margin-top:9px}
 .nact button{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
   color:var(--ink-2);background:var(--surface-2);border:1px solid var(--ring);
   border-radius:9px;padding:6px 11px}
 .nact button.ok{color:var(--profit);border-color:rgba(27,175,122,.45)}
+/* ปุ่มหลัก — เปิดแชต AI พร้อมคำถามที่กรอกไว้ให้แล้ว */
+.nact button.ai{background:rgba(217,119,87,.16);color:#e8a184;
+  border-color:rgba(217,119,87,.42)}
 
 /* สรุปจำนวนข่าวของวันนี้ ต่อท้ายหัวข้อวัน */
 .daysep i{font-style:normal;font-weight:400;color:var(--ink-2);font-size:11.5px}
+
+/* กล่องสำรองตอนคัดลอกอัตโนมัติไม่ผ่าน */
+.nfall{margin-top:9px}
+.nfall textarea{width:100%;padding:9px 10px;border-radius:10px;background:var(--plane);
+  border:1px solid var(--ring);color:var(--ink);font:inherit;font-size:12px;
+  line-height:1.55;resize:vertical}
 
 /* ── แถบเตือนข่าวใกล้ถึงเวลา ────────────────────────────── */
 .alert{display:none;margin:10px 0 0;
@@ -1311,8 +1320,13 @@ function resultHtml(e){
          ' (คาด '+esc(e.forecast)+') → เป็นแรง'+(gold>0?'หนุนทองขึ้น 🟢':'กดทองลง 🔴')+'</div>';
 }
 
-/* ข้อความสำหรับเอาไปถาม AI ต่อ — ใส่ครบทั้งตัวเลขและบริบท */
-function newsPrompt(e){
+/* ข้อความสำหรับเอาไปถาม AI ต่อ — ใส่ครบทั้งตัวเลขและบริบท
+   compact = true ตัดช่องว่างจัดคอลัมน์ออก ใช้ตอนยัดใส่ URL (ช่องว่างกินที่ใน URL) */
+function newsPrompt(e, compact){
+  const t = newsPromptRaw(e);
+  return compact ? t.replace(/[ \t]{2,}/g,' ').replace(/ +:/g,':') : t;
+}
+function newsPromptRaw(e){
   const m=newsMins(e);
   const when = m>=0 ? 'ยังไม่ประกาศ (อีก '+fmt(m,0)+' นาที)' : 'ประกาศไปแล้ว';
   const L=[
@@ -1410,22 +1424,63 @@ function renderNews(){
         (figs.length?'<div class="nfig">'+figs.join('')+'</div>':'')+
         (cnt&&e.impact==='High'?'<div class="ncount">⏱ '+esc(cnt)+'</div>':'')+
         (done ? resultHtml(e) : '<div class="nbias">'+biasHtml(e)+'</div>')+
-        '<div class="nact"><button data-a="copy">📋 คัดลอกไปถาม AI</button></div>'+
+        '<div class="nact">'+
+          '<button class="ai" data-a="ask">💬 ถาม Claude</button>'+
+          '<button data-a="copy">📋 คัดลอก</button>'+
+        '</div>'+
       '</div>';
   });
   box.innerHTML=html;
 }
 
-/* กดคัดลอก — ได้ข้อความพร้อมวางในแชต AI ตัวไหนก็ได้ */
+/* เปิดแชต Claude พร้อมคำถามที่กรอกไว้ให้แล้ว
+   claude.ai/new?q=... จะเติมข้อความในช่องแชตให้ แต่ยังไม่ส่ง — ผู้ใช้อ่านแล้วกดส่งเอง
+   ในแอป Android: GTPro.openUrl เปิดออกข้างนอก ถ้ามีแอป Claude ติดตั้งอยู่ระบบจะเด้งเข้าแอปให้ */
+function askClaude(e){
+  const url = 'https://claude.ai/new?q=' + encodeURIComponent(newsPrompt(e, true));
+  try{ if(window.GTPro && GTPro.openUrl){ GTPro.openUrl(url); return true; } }catch(err){}
+  const w = window.open(url, '_blank', 'noopener');
+  if(!w) location.href = url;
+  return true;
+}
+
+/* กดคัดลอก — ได้ข้อความพร้อมวางในแชต AI ตัวไหนก็ได้
+   ถ้าคัดลอกอัตโนมัติไม่ผ่าน (WebView เก่า / เบราว์เซอร์ไม่ให้สิทธิ์)
+   จะกางกล่องข้อความให้เลือกคัดลอกเองแทน ไม่ปล่อยให้ทางตัน */
 $('#newsList').onclick = async e => {
+  const ask = e.target.closest('[data-a="ask"]');
+  if(ask){
+    const c = ask.closest('.nitem');
+    const it = ((data&&data.news)||[])[+c.dataset.i];
+    if(it) askClaude(it);
+    return;
+  }
   const btn = e.target.closest('[data-a="copy"]'); if(!btn) return;
   const card = btn.closest('.nitem'); if(!card) return;
   const item = ((data&&data.news)||[])[+card.dataset.i]; if(!item) return;
-  const okc = await copyText(newsPrompt(item));
-  btn.textContent = okc ? '✓ คัดลอกแล้ว — ไปวางในแชต AI ได้เลย' : '❌ คัดลอกไม่สำเร็จ';
-  btn.classList.toggle('ok', okc);
-  clearTimeout(btn.__t);
-  btn.__t = setTimeout(()=>{ btn.textContent='📋 คัดลอกไปถาม AI'; btn.classList.remove('ok'); }, 2600);
+
+  const txt = newsPrompt(item);
+  const old = card.querySelector('.nfall');
+  if(old){ old.remove(); btn.textContent='📋 คัดลอกไปถาม AI'; btn.classList.remove('ok'); return; }
+
+  if(await copyText(txt)){
+    btn.textContent = '✓ คัดลอกแล้ว — ไปวางในแชต AI ได้เลย';
+    btn.classList.add('ok');
+    clearTimeout(btn.__t);
+    btn.__t = setTimeout(()=>{ btn.textContent='📋 คัดลอกไปถาม AI'; btn.classList.remove('ok'); }, 2600);
+    return;
+  }
+
+  const box = document.createElement('div');
+  box.className = 'nfall';
+  box.innerHTML = '<div class="hint" style="margin:0 0 6px">คัดลอกอัตโนมัติไม่ได้ — '+
+                  'กดค้างที่ข้อความแล้วเลือก “คัดลอก” ได้เลย</div>'+
+                  '<textarea readonly rows="7"></textarea>';
+  box.querySelector('textarea').value = txt;
+  card.querySelector('.nact').before(box);
+  const ta = box.querySelector('textarea');
+  ta.focus(); ta.select();
+  btn.textContent = '✕ ปิดกล่องข้อความ';
 };
 
 /* ── แถบเตือน + จุดแดงบนแท็บ — เดินทุก 30 วินาที ── */
