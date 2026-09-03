@@ -261,8 +261,13 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 .daysep.first{margin-top:4px}
 .nitem{background:var(--surface);border:1px solid var(--ring);border-radius:var(--radius);
   padding:11px 13px;margin-bottom:8px}
-.nitem.soon{border-color:rgba(240,192,74,.55);background:rgba(240,192,74,.06)}
-.nitem.past{opacity:.5}
+/* ใกล้ถึงเวลา = กรอบหนา ไม่ย้อมพื้น อ่านตัวเลขได้ชัดเหมือนใบอื่น */
+.nitem.soon{border:2.5px solid #f0c04a;padding:9.5px 11.5px;
+  box-shadow:0 0 0 4px rgba(240,192,74,.09)}
+/* ประกาศไปแล้ว — จางลงนิดเดียว ยังอ่านย้อนหลังได้สบาย */
+.nitem.past{opacity:.74}
+.done{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;flex:none;
+  background:var(--surface-2);color:var(--muted);letter-spacing:.02em}
 .nhead{display:flex;align-items:baseline;gap:9px}
 .ntime{font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;flex:none;width:52px}
 .ntitle{font-size:13.5px;line-height:1.45;flex:1}
@@ -278,6 +283,24 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 .nbias .up{color:var(--profit);font-weight:700}
 .nbias .dn{color:var(--loss);font-weight:700}
 .ncount{font-size:11.5px;color:#f0c04a;font-weight:700;margin-top:6px}
+
+/* ผลจริงเทียบกับที่คาด (เฉพาะข่าวที่ประกาศแล้ว) */
+.nres{margin-top:8px;font-size:12px;line-height:1.6;border-radius:9px;padding:7px 10px;
+  background:var(--surface-2);border:1px solid var(--ring)}
+.nres b{font-variant-numeric:tabular-nums}
+.nres.up{border-color:rgba(27,175,122,.4);background:rgba(27,175,122,.10);color:#7fe3bd}
+.nres.dn{border-color:rgba(208,59,59,.4);background:rgba(208,59,59,.10);color:#ffb4b4}
+.nres.flat{color:var(--ink-2)}
+
+/* แถวปุ่มท้ายการ์ดข่าว */
+.nact{display:flex;justify-content:flex-end;margin-top:9px}
+.nact button{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
+  color:var(--ink-2);background:var(--surface-2);border:1px solid var(--ring);
+  border-radius:9px;padding:6px 11px}
+.nact button.ok{color:var(--profit);border-color:rgba(27,175,122,.45)}
+
+/* สรุปจำนวนข่าวของวันนี้ ต่อท้ายหัวข้อวัน */
+.daysep i{font-style:normal;font-weight:400;color:var(--ink-2);font-size:11.5px}
 
 /* ── แถบเตือนข่าวใกล้ถึงเวลา ────────────────────────────── */
 .alert{display:none;margin:10px 0 0;
@@ -1255,6 +1278,88 @@ function countLabel(m){
   return null;
 }
 
+/* แปลงค่าจากปฏิทิน ('48.7' '0.3%' '205K' '-1.2M' '1,234') เป็นตัวเลขจริง */
+function numOf(s){
+  if(s==null) return null;
+  const t=String(s).trim().replace(/,/g,'').replace(/%/g,'');
+  const m=t.match(/^(-?\d*\.?\d+)\s*([KMBT])?$/i);
+  if(!m) return null;
+  const v=parseFloat(m[1]); if(isNaN(v)) return null;
+  return v*({K:1e3,M:1e6,B:1e9,T:1e12}[(m[2]||'').toUpperCase()]||1);
+}
+
+/* ข่าวที่ประกาศแล้ว: เทียบ "จริง vs คาด" แล้วสรุปผลต่อทองให้เลย */
+function resultHtml(e){
+  if(!e.actual) return '';
+  const a=numOf(e.actual), f=numOf(e.forecast);
+  if(a===null||f===null)
+    return '<div class="nres flat">ประกาศแล้วที่ <b>'+esc(e.actual)+'</b></div>';
+
+  const diff=a-f;
+  const eps=Math.max(Math.abs(f),Math.abs(a))*0.0005;
+  const cmp = diff>eps ? 1 : diff<-eps ? -1 : 0;
+  if(cmp===0)
+    return '<div class="nres flat">ออกมา <b>'+esc(e.actual)+'</b> ตรงตามคาด — '+
+           'ทองมักไม่ขยับแรงจากตัวเลขนี้</div>';
+
+  const word = cmp>0 ? 'สูงกว่าคาด' : 'ต่ำกว่าคาด';
+  const gold = e.dir===0 ? 0 : cmp*e.dir;          /* +1 ทองขึ้น / −1 ทองลง */
+  if(gold===0)
+    return '<div class="nres flat">ออกมา <b>'+esc(e.actual)+'</b> '+word+
+           ' (คาด '+esc(e.forecast)+') — ต้องดูภาพรวมประกอบ</div>';
+  return '<div class="nres '+(gold>0?'up':'dn')+'">ออกมา <b>'+esc(e.actual)+'</b> '+word+
+         ' (คาด '+esc(e.forecast)+') → เป็นแรง'+(gold>0?'หนุนทองขึ้น 🟢':'กดทองลง 🔴')+'</div>';
+}
+
+/* ข้อความสำหรับเอาไปถาม AI ต่อ — ใส่ครบทั้งตัวเลขและบริบท */
+function newsPrompt(e){
+  const m=newsMins(e);
+  const when = m>=0 ? 'ยังไม่ประกาศ (อีก '+fmt(m,0)+' นาที)' : 'ประกาศไปแล้ว';
+  const L=[
+    'ช่วยวิเคราะห์ข่าวเศรษฐกิจนี้ให้หน่อยครับ',
+    '',
+    'ข่าว      : '+e.title,
+    'สกุลเงิน  : USD (สหรัฐฯ)',
+    'ระดับผลกระทบ : '+(e.impact==='High'?'แรง (High)':'ปานกลาง (Medium)'),
+    'เวลา      : '+e.when+' น. (เวลาไทย) — '+when
+  ];
+  if(e.actual)   L.push('ตัวเลขจริง : '+e.actual);
+  if(e.forecast) L.push('คาดการณ์  : '+e.forecast);
+  if(e.previous) L.push('ครั้งก่อน  : '+e.previous);
+  L.push('');
+  L.push('ผมเทรดทองคำ XAUUSD ไทม์เฟรม 30 นาที ขนาดไม้ 0.01 lot');
+  L.push('อยากทราบว่า:');
+  L.push('1. ข่าวนี้คืออะไร วัดอะไร และทำไมถึงมีผลกับราคาทอง');
+  if(e.actual){
+    L.push('2. ตัวเลขที่ออกมาเทียบกับที่คาดไว้ บอกอะไรเกี่ยวกับเศรษฐกิจสหรัฐฯ');
+    L.push('3. ปกติแล้วทองมักตอบสนองอย่างไรหลังข่าวแบบนี้ และควรระวังอะไรในไม้ที่เปิดค้างอยู่');
+  }else{
+    L.push('2. ถ้าออกมาสูงกว่า / ต่ำกว่าคาด ทองมีแนวโน้มไปทางไหน เพราะอะไร');
+    L.push('3. ควรวางแผนเทรดช่วงก่อน-ระหว่าง-หลังข่าวอย่างไร (สเปรด ความผันผวน จุดวาง SL)');
+  }
+  return L.join('\n');
+}
+
+/* คัดลอกข้อความ — มี fallback เผื่อ WebView เก่าที่ไม่มี clipboard API */
+async function copyText(t){
+  try{
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(t); return true;
+    }
+  }catch(err){}
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=t;
+    ta.setAttribute('readonly','');
+    ta.style.cssText='position:fixed;top:-1000px;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select(); ta.setSelectionRange(0, t.length);
+    const ok=document.execCommand('copy');
+    ta.remove();
+    return ok;
+  }catch(err){ return false; }
+}
+
 function renderNews(){
   const box=$('#newsList');
   const list=(data&&data.news)||[];
@@ -1263,37 +1368,65 @@ function renderNews(){
       '<span style="font-size:12px">เปิดเมนู GTPro › 7 ในชีต แล้วรีเฟรชอีกครั้ง</span></div>';
     return;
   }
-  let html='', day='', first=true;
+  /* นับข่าวของแต่ละวัน ไว้เติมท้ายหัวข้อวัน (ประกาศแล้วกี่ตัว เหลืออีกกี่ตัว) */
+  const tally={};
   list.forEach(e=>{
+    const d=nDate(e); const t=tally[d]||(tally[d]={done:0,left:0});
+    (newsMins(e)<0 ? t.done++ : t.left++);
+  });
+
+  let html='', day='', first=true;
+  list.forEach((e,idx)=>{
     const d=nDate(e);
     if(d!==day){
       day=d;
-      html+='<div class="daysep'+(first?' first':'')+'">'+esc(dayLabel(d))+'</div>';
+      const t=tally[d];
+      const bits=[];
+      if(t.done) bits.push('ประกาศแล้ว '+fmt(t.done,0));
+      if(t.left) bits.push('เหลืออีก '+fmt(t.left,0));
+      html+='<div class="daysep'+(first?' first':'')+'">'+esc(dayLabel(d))+
+            (bits.length?' <i>· '+bits.join(' · ')+'</i>':'')+'</div>';
       first=false;
     }
     const m=newsMins(e);
-    const soon=(m>=-10&&m<=ALERT_MIN&&e.impact==='High');
-    const cl=m<-10?' past':(soon?' soon':'');
+    const done=m<0;
+    /* ใกล้ถึงเวลา = กรอบหนา (ข่าวแรงที่เหลือไม่เกิน ALERT_MIN นาที) */
+    const soon=(m>=0&&m<=ALERT_MIN&&e.impact==='High');
+    const cl=done?' past':(soon?' soon':'');
     const cnt=countLabel(m);
     const figs=[];
     if(e.actual)   figs.push('จริง <b>'+esc(e.actual)+'</b>');
     if(e.forecast) figs.push('คาด <b>'+esc(e.forecast)+'</b>');
     if(e.previous) figs.push('ครั้งก่อน <b>'+esc(e.previous)+'</b>');
     html+=
-      '<div class="nitem'+cl+'">'+
+      '<div class="nitem'+cl+'" data-i="'+idx+'">'+
         '<div class="nhead">'+
           '<div class="ntime">'+esc(nTime(e))+'</div>'+
           '<div class="ntitle">'+esc(e.title)+'</div>'+
+          (done?'<span class="done">ประกาศแล้ว</span>':'')+
           '<span class="imp '+(e.impact==='High'?'High':'Medium')+'">'+
             (e.impact==='High'?'แรง':'ปานกลาง')+'</span>'+
         '</div>'+
         (figs.length?'<div class="nfig">'+figs.join('')+'</div>':'')+
         (cnt&&e.impact==='High'?'<div class="ncount">⏱ '+esc(cnt)+'</div>':'')+
-        '<div class="nbias">'+biasHtml(e)+'</div>'+
+        (done ? resultHtml(e) : '<div class="nbias">'+biasHtml(e)+'</div>')+
+        '<div class="nact"><button data-a="copy">📋 คัดลอกไปถาม AI</button></div>'+
       '</div>';
   });
   box.innerHTML=html;
 }
+
+/* กดคัดลอก — ได้ข้อความพร้อมวางในแชต AI ตัวไหนก็ได้ */
+$('#newsList').onclick = async e => {
+  const btn = e.target.closest('[data-a="copy"]'); if(!btn) return;
+  const card = btn.closest('.nitem'); if(!card) return;
+  const item = ((data&&data.news)||[])[+card.dataset.i]; if(!item) return;
+  const okc = await copyText(newsPrompt(item));
+  btn.textContent = okc ? '✓ คัดลอกแล้ว — ไปวางในแชต AI ได้เลย' : '❌ คัดลอกไม่สำเร็จ';
+  btn.classList.toggle('ok', okc);
+  clearTimeout(btn.__t);
+  btn.__t = setTimeout(()=>{ btn.textContent='📋 คัดลอกไปถาม AI'; btn.classList.remove('ok'); }, 2600);
+};
 
 /* ── แถบเตือน + จุดแดงบนแท็บ — เดินทุก 30 วินาที ── */
 function newsTick(){

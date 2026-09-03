@@ -2332,19 +2332,27 @@ function readNews_(force) {
 }
 
 /**
- * ข่าวที่ส่งให้แอป — ย้อนหลัง 18 ชม. ถึงอีก 7 วัน
+ * ข่าวที่ส่งให้แอป — ตั้งแต่ 00:00 ของวันนี้ ถึงอีก 7 วัน
+ *
+ * ทำไมนับจากเที่ยงคืน ไม่ใช่ "ย้อนหลัง 18 ชม.":
+ *   ผู้ใช้ต้องการเห็น "ประวัติของวันนี้" ครบทั้งวัน ถ้าใช้ช่วงเวลาถอยหลังแบบตายตัว
+ *   ข่าวที่ประกาศตอนเช้ามืดจะหลุดหายไปเมื่อเวลาผ่านไปพอสมควร
+ * เทียบด้วยสตริงวันที่ (yyyy-MM-dd) ตรง ๆ จะได้ไม่ต้องคำนวณ offset ของโซนเวลาเอง
+ *
  * ใส่ mins (นาทีที่เหลือ, ติดลบ = ผ่านไปแล้ว) ให้แอปนับถอยหลัง/เตือนได้
  */
 function newsForApp_() {
   var all = readNews_(false);
   var now = Date.now();
-  var from = now - 18 * 3600 * 1000;
-  var to   = now + 7 * 24 * 3600 * 1000;
+  var to  = now + 7 * 24 * 3600 * 1000;
+  var todayStr = Utilities.formatDate(new Date(now), tz(), 'yyyy-MM-dd');
 
   var out = [];
   for (var i = 0; i < all.length; i++) {
     var e = all[i];
-    if (e.ts < from || e.ts > to) continue;
+    if (e.ts > to) continue;
+    // e.when คือ 'yyyy-MM-dd HH:mm' ตามโซนเวลาชีตอยู่แล้ว เทียบสตริงได้เลย
+    if (String(e.when).substring(0, 10) < todayStr) continue;
     out.push({
       id: e.id, title: e.title, impact: e.impact, when: e.when,
       forecast: e.forecast, previous: e.previous, actual: e.actual,
