@@ -10,7 +10,7 @@
  * (ต้องรอ V เปลี่ยน + reload สองรอบถึงจะได้ของใหม่ ซึ่งผู้ใช้ไม่มีทางรู้)
  * ส่วนข้อมูล (คำขอที่มี query string) ไม่แตะเลย ปล่อยให้ดึงสดทุกครั้ง
  */
-const V = 'gtpro-v8';
+const V = 'gtpro-v9';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 const NET_TIMEOUT = 4000;
 
@@ -47,11 +47,17 @@ function isShell(url) {
   return /\.(html|css|png|svg|webmanifest|woff2?)$/.test(p) || p.endsWith('/');
 }
 
+/* ยิงเน็ตแบบข้าม HTTP cache ของเบราว์เซอร์ด้วย (cache: 'reload')
+   GitHub Pages ส่ง Cache-Control: max-age=600 ถ้าไม่ข้าม เบราว์เซอร์จะคืนไฟล์เก่า
+   ได้อีกนานถึง 10 นาทีแม้ push ของใหม่แล้ว — เป็นแคชชั้นที่สองที่ทำให้แอปดูเหมือนไม่อัปเดต */
 function fromNetwork(req) {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('timeout')), NET_TIMEOUT);
-    fetch(req).then(res => { clearTimeout(t); resolve(res); },
-                    err => { clearTimeout(t); reject(err); });
+    let r;
+    try { r = new Request(req.url, { cache: 'reload', credentials: 'same-origin' }); }
+    catch (e) { r = req; }
+    fetch(r).then(res => { clearTimeout(t); resolve(res); },
+                  err => { clearTimeout(t); reject(err); });
   });
 }
 
