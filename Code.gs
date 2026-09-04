@@ -1747,15 +1747,33 @@ function doGet(e) {
     if (p.img) return jsonOut_(serveImage_(String(p.img)), p.callback);
 
     // บันทึก/ปิดไม้จากหน้าแอป
-    if (p.act === 'add')    return jsonOut_(apiAddTrade_(p), p.callback);
-    if (p.act === 'close')  return jsonOut_(apiCloseTrade_(p), p.callback);
-    if (p.act === 'delete') return jsonOut_(apiDeleteTrade_(p), p.callback);
+    // แนบข้อมูลหน้าจอชุดใหม่กลับไปในคำตอบเดียวกันเลย (withData_)
+    // เดิมแอปต้องยิงซ้ำอีกรอบเพื่อรีเฟรช = รอ 2 เท่า (วัดได้ ~8.6 วิ ต่อการบันทึก 1 ไม้)
+    if (p.act === 'add')    return jsonOut_(withData_(apiAddTrade_(p), p), p.callback);
+    if (p.act === 'close')  return jsonOut_(withData_(apiCloseTrade_(p), p), p.callback);
+    if (p.act === 'delete') return jsonOut_(withData_(apiDeleteTrade_(p), p), p.callback);
     if (p.act === 'news')   return jsonOut_({ ok: true, news: newsForApp_() }, p.callback);
 
-    return jsonOut_(buildDashboardData_(p.month || '', p.mode || ''), p.callback);
+    return jsonOut_(buildDashboardData_(p.month || '', p.mode || '', p.news === '1'), p.callback);
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err) }, p.callback);
   }
+}
+
+/**
+ * แนบข้อมูลหน้าจอชุดใหม่ต่อท้ายผลของ add/close/delete
+ * ถ้าคำสั่งล้มเหลวก็ไม่ต้องเสียเวลาอ่านชีต ส่ง error กลับไปเลย
+ * และถ้าอ่านชีตพลาด ก็ยังไม่ทำให้คำสั่งที่สำเร็จไปแล้วกลายเป็นล้มเหลว
+ */
+function withData_(res, p) {
+  if (!res || res.ok === false) return res;
+  try {
+    var mode = normMode(p.mode || res.mode || defaultMode());
+    res.data = buildDashboardData_(p.month || '', mode, false);
+  } catch (err) {
+    res.data_error = String(err);
+  }
+  return res;
 }
 
 function jsonOut_(obj, callback) {
@@ -1770,13 +1788,21 @@ function jsonOut_(obj, callback) {
 
 /* ---------- ประกอบข้อมูลทั้งหมดที่หน้า Dashboard ต้องใช้ ---------- */
 
-function buildDashboardData_(monthKey, modeParam) {
+/**
+ * ข้อมูลหลักของหน้าแอป
+ *
+ * ⚠️ ไม่รวมข่าวไว้ในก้อนนี้แล้ว (ตั้งแต่ 4 ก.ย. 2026)
+ * วัดจากเครื่องจริง: dashboard 4.1–5.5 วิ / ข่าวอย่างเดียว 1.8–2.8 วิ
+ * แอปจึงดึงข่าวแยกด้วย ?act=news แบบเบื้องหลัง หน้าหลักไม่ต้องรอข่าว
+ * ถ้าอยากได้ก้อนเดียวจบ ส่ง &news=1 มาด้วย
+ */
+function buildDashboardData_(monthKey, modeParam, withNews) {
   if (!/^\d{4}-\d{2}$/.test(String(monthKey))) {
     monthKey = Utilities.formatDate(new Date(), tz(), 'yyyy-MM');
   }
   var mode = normMode(modeParam || MODE_LIVE);
 
-  return {
+  var out = {
     ok: true,
     generated_at: nowStr(),
     tz: tz(),
@@ -1790,9 +1816,10 @@ function buildDashboardData_(monthKey, modeParam) {
     open: readOpenWithFloating_(mode),
     history: readHistory_(mode, monthKey),
     stats: readStats_(),
-    news: newsForApp_(),
     closed_count: countClosed_()
   };
+  if (withNews) out.news = newsForApp_();
+  return out;
 }
 
 /** ปฏิทิน + equity สะสม มาจากชีตเดียวกัน (กรองตามโหมด) */

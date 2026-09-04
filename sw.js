@@ -10,7 +10,7 @@
  * (ต้องรอ V เปลี่ยน + reload สองรอบถึงจะได้ของใหม่ ซึ่งผู้ใช้ไม่มีทางรู้)
  * ส่วนข้อมูล (คำขอที่มี query string) ไม่แตะเลย ปล่อยให้ดึงสดทุกครั้ง
  */
-const V = 'gtpro-v9';
+const V = 'gtpro-v10';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 const NET_TIMEOUT = 4000;
 

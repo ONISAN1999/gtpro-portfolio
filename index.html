@@ -665,7 +665,7 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 'use strict';
 const TH_MONTH=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
   'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-const BUILD='2026-09-03.4';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
+const BUILD='2026-09-04.1';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
 const LS='gtpro.cfg', LSD='gtpro.data';
 const $=s=>document.querySelector(s);
 
@@ -745,7 +745,45 @@ async function fetchJSON(u,onp){
 
 function api(m,onp){
   const u=`${cfg.url}?api=1&key=${encodeURIComponent(cfg.key)}&month=${m||''}&mode=${mode}`;
-  return fetchJSON(u,onp).catch(()=>jsonp(u));
+  /* เน็ตมือถือสะดุดบ่อย + Apps Script ตอบช้า 3-5 วิ → ลองซ้ำอีกรอบก่อนยอมแพ้
+     ไม่งั้นเจอ "เชื่อมต่อไม่ได้: network" ทั้งที่เน็ตแค่กระตุกแป๊บเดียว */
+  return fetchJSON(u,onp)
+    .catch(()=> fetchJSON(u,onp))
+    .catch(()=> jsonp(u));
+}
+
+/* ══ ข่าว: ดึงแยกจากข้อมูลหลัก ══
+   วัดจริงบนเครื่อง: dashboard 4.1-5.5 วิ / ข่าว 1.8-2.8 วิ
+   ถ้ารวมก้อนเดียวผู้ใช้ต้องรอข่าวทุกครั้งทั้งที่ยังไม่ได้เปิดดู
+   จึงดึงเบื้องหลังหลังหน้าหลักขึ้นแล้ว + เก็บแคชไว้ 10 นาที */
+const LSN='gtpro.news';
+const NEWS_TTL=10*60*1000;
+let newsBusy=false;
+
+function newsFromCache(){
+  try{
+    const o=JSON.parse(localStorage.getItem(LSN)||'null');
+    if(o && Date.now()-o.at < NEWS_TTL && Array.isArray(o.list)) return o.list;
+  }catch(e){}
+  return null;
+}
+async function loadNews(force){
+  if(!cfg||!cfg.url||newsBusy) return;
+  if(!force){
+    const c=newsFromCache();
+    if(c){ if(data){ data.news=c; renderNews(); newsTick(); } return; }
+  }
+  newsBusy=true;
+  const u=`${cfg.url}?api=1&key=${encodeURIComponent(cfg.key)}&act=news`;
+  try{
+    const r=await fetchJSON(u).catch(()=>fetchJSON(u));
+    if(r && r.ok && Array.isArray(r.news)){
+      try{ localStorage.setItem(LSN,JSON.stringify({at:Date.now(),list:r.news})); }catch(e){}
+      if(data){ data.news=r.news; renderNews(); newsTick(); }
+    }
+  }catch(e){
+    /* ข่าวโหลดไม่ได้ไม่ใช่เรื่องคอขาดบาดตาย — ใช้ของเก่าที่มีต่อไป */
+  }finally{ newsBusy=false; }
 }
 /* ดึงรูปชาร์ตทีละใบ — ฝั่ง Apps Script ส่งกลับเป็น base64 ไฟล์จึงไม่ต้องแชร์สาธารณะ */
 function apiImg(id){
@@ -771,6 +809,18 @@ function jsonp(u){
   });
 }
 
+/* เอาข้อมูลชุดใหม่ที่แนบมากับคำตอบของ add/close/delete มาใช้เลย
+   คืนค่า true ถ้าใช้ได้จริง — เรียกใช้แทน refresh() เพื่อตัดการยิงซ้ำ */
+function applyData(d){
+  if(!d || d.ok===false || !d.daily) return false;
+  if(!d.news){ const c=(data&&data.news)||newsFromCache(); if(c) d.news=c; }
+  data=d;
+  try{ localStorage.setItem(dataKey(),JSON.stringify({at:Date.now(),d})); }catch(e){}
+  $('#stale').classList.remove('on');
+  render();
+  return true;
+}
+
 async function refresh(){
   if(!cfg||!cfg.url){ go('set'); return; }
   progStart();
@@ -783,11 +833,13 @@ async function refresh(){
     });
     if(!d||d.ok===false) throw new Error(d&&d.error||'ตอบกลับผิดรูปแบบ');
     clearInterval(creepT); setPct(0.97);
+    if(!d.news){ const c=newsFromCache(); if(c) d.news=c; }   /* คงข่าวเดิมไว้ระหว่างรอชุดใหม่ */
     data=d;
     try{ localStorage.setItem(dataKey(),JSON.stringify({at:Date.now(),d})); }catch(e){}
     $('#stale').classList.remove('on');
     render();
     progEnd(true);
+    loadNews();                                              /* ดึงข่าวต่อเบื้องหลัง ไม่บล็อกหน้าจอ */
   }catch(err){
     progEnd(false);
     const c=localStorage.getItem(dataKey());
@@ -1222,8 +1274,11 @@ $('#add-save').onclick = async () => {
       ['f-price','f-tp','f-sl','f-note'].forEach(id=>$('#'+id).value='');
       $('#f-rr').innerHTML=''; $('#f-img').value=''; $('#f-prev').hidden=true; pendingImg=null;
       if(getMode()!==mode){ mode=getMode(); }   // เพิ่งลงคนละกระเป๋า → สลับตาม
-      await refresh();
-      setTimeout(closeAdd, 1100);
+      /* เซิร์ฟเวอร์แนบข้อมูลชุดใหม่มาให้แล้ว ไม่ต้องยิงรีเฟรชอีกรอบ (ประหยัดไป ~4.5 วิ)
+         ถ้าคนละกระเป๋ากับที่ส่งไป ค่อยยิงใหม่ */
+      applyData(r.data);
+      if(!r.data || r.data.mode!==mode) refresh();
+      setTimeout(closeAdd, 700);
     }
   }catch(err){ msg(m,'ผิดพลาด: '+err.message,false); }
   finally{ btn.disabled=false; btn.textContent='บันทึกไม้'; }
@@ -1268,7 +1323,7 @@ $('#cl-save').onclick = async () => {
                              when:dtOut($('#cl-when').value) });
     if(!r || r.ok===false) throw new Error((r&&r.error)||'ปิดไม่สำเร็จ');
     msg(m,'ปิดไม้แล้ว ✓',true);
-    await refresh();
+    if(!applyData(r.data)) await refresh();   /* ใช้ชุดที่แนบมา ไม่ต้องยิงซ้ำ */
     setTimeout(()=>$('#sh-close').classList.remove('on'), 700);
   }catch(err){ msg(m,'ผิดพลาด: '+err.message,false); }
   finally{ btn.disabled=false; btn.textContent='ปิดไม้นี้'; }
@@ -1322,7 +1377,8 @@ $('#openList').onclick = async e => {
   if(e.target.closest('[data-a="del"]')){
     if(!confirm('ลบไม้ '+t.symbol+' '+t.side+' ทิ้ง? (ใช้กับไม้ที่กรอกผิด)')) return;
     const r = await apiAct({ act:'delete', id:t.id });
-    if(r && r.ok) refresh(); else alert((r&&r.error)||'ลบไม่สำเร็จ');
+    if(r && r.ok){ if(!applyData(r.data)) refresh(); }
+    else alert((r&&r.error)||'ลบไม่สำเร็จ');
   }
   const img = e.target.closest('.thumb img');
   if(img){ $('#lbimg').src = img.src; $('#lbcap').textContent = img.dataset.cap||'';
@@ -1687,7 +1743,7 @@ function go(p){
   document.querySelectorAll('.page').forEach(e=>e.classList.toggle('on',e.id==='p-'+p));
   document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('on',e.dataset.p===p));
   if(p==='eq') setTimeout(renderEq,30);
-  if(p==='news') renderNews();
+  if(p==='news'){ renderNews(); loadNews(); }
   /* หน้าข่าว/ตั้งค่าไม่ได้ใช้ปุ่มบันทึกไม้ — ซ่อนไว้จะได้ไม่บังเนื้อหา */
   $('#fab').style.display = (p==='news'||p==='set') ? 'none' : 'grid';
   window.scrollTo(0,0);
