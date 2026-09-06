@@ -183,6 +183,9 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
   color:#05130d;font-weight:700;margin-top:16px;text-align:center}
 .btn.ghost{background:var(--surface-2);color:var(--ink-2);font-weight:500}
 .hint{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
+/* ทางลัด Ctrl+V โชว์เฉพาะเครื่องที่ชี้ด้วยเมาส์ (PC) — บนมือถือไม่มีคีย์บอร์ดให้กด */
+.pasteTip{display:none;margin-top:6px}
+@media (hover:hover) and (pointer:fine){ .pasteTip{display:block} }
 .empty{text-align:center;color:var(--muted);padding:36px 16px;font-size:13.5px}
 .err{background:rgba(208,59,59,.12);border:1px solid rgba(208,59,59,.4);
   color:#ffb4b4;border-radius:12px;padding:11px 13px;font-size:13px;margin:10px 0}
@@ -613,6 +616,8 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 
       <label for="f-img">รูปชาร์ต (ไม่ใส่ก็ได้)</label>
       <input type="file" id="f-img" accept="image/*">
+      <!-- บอกทางลัดเฉพาะเครื่องที่มีคีย์บอร์ด — บนมือถือกด Ctrl+V ไม่ได้ ไม่ต้องรก -->
+      <div class="hint pasteTip" id="f-pastetip">แคปชาร์ตแล้วกด <b>Ctrl+V</b> วางตรงนี้ได้เลย</div>
       <div class="thumb" id="f-prev" hidden></div>
 
       <label for="f-note">โน้ต (ไม่ใส่ก็ได้)</label>
@@ -672,7 +677,7 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 'use strict';
 const TH_MONTH=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
   'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-const BUILD='2026-09-05.1';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
+const BUILD='2026-09-06.1';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
 const LS='gtpro.cfg', LSD='gtpro.data';
 const $=s=>document.querySelector(s);
 
@@ -836,6 +841,7 @@ function applyData(d){
   data=d;
   try{ localStorage.setItem(dataKey(),JSON.stringify({at:Date.now(),d})); }catch(e){}
   $('#stale').classList.remove('on');
+  lastSyncAt = Date.now();    /* นี่คือข้อมูลสด ๆ จากเซิร์ฟเวอร์ ไม่ต้องให้ syncOnReturn ยิงซ้ำ */
   render();
   return true;
 }
@@ -858,6 +864,7 @@ async function refresh(){
     $('#stale').classList.remove('on');
     render();
     progEnd(true);
+    lastSyncAt = Date.now();
     loadNews();                                              /* ดึงข่าวต่อเบื้องหลัง ไม่บล็อกหน้าจอ */
   }catch(err){
     progEnd(false);
@@ -873,6 +880,32 @@ async function refresh(){
     }
   }finally{ $('#refresh').style.opacity=1; }
 }
+
+/* ══ ซิงก์ข้ามเครื่อง: กลับมาที่หน้าจอเมื่อไร ดึงของใหม่เมื่อนั้น ══
+   ลง backtest จาก PC แล้วหยิบมือถือขึ้นมาดู ต้องเห็นไม้ที่เพิ่งลงโดยไม่ต้องกดรีเฟรชเอง
+   (ข้อมูลอยู่ชีตเดียวกันอยู่แล้ว ที่ขาดคือจังหวะดึง)
+
+   ทำไมไม่ poll ทุก 30 วินาที: Apps Script ตอบ 3-5 วิต่อครั้งและมีโควตาต่อวัน
+   ยิงทิ้งตอนไม่มีคนดูคือเปลืองเปล่า ๆ — ผูกกับ "คนกลับมามอง" คุ้มกว่ามาก */
+let lastSyncAt = 0;
+const SYNC_GAP = 20000;      /* เพิ่งดึงไปไม่ถึง 20 วิ ไม่ต้องดึงซ้ำ กันสลับแท็บรัว ๆ */
+
+function sheetOpen(){
+  return ['sh-add','sh-close'].some(id => $('#'+id).classList.contains('on'));
+}
+function syncOnReturn(){
+  if(document.hidden) return;
+  if(!cfg || !cfg.url) return;
+  if(navigator.onLine === false) return;
+  if(sheetOpen()) return;                       /* กำลังกรอกฟอร์มอยู่ อย่าวาดหน้าใหม่ใต้มือ */
+  if(Date.now() - lastSyncAt < SYNC_GAP) return;
+  refresh();
+}
+document.addEventListener('visibilitychange', syncOnReturn);
+/* focus ด้วย เพราะสลับหน้าต่างบน PC บางทีไม่ยิง visibilitychange */
+window.addEventListener('focus', syncOnReturn);
+/* เน็ตกลับมา = อีกจังหวะที่ข้อมูลน่าจะตกยุค */
+window.addEventListener('online', () => { lastSyncAt = 0; syncOnReturn(); });
 
 /* ══ วาดหน้า ══ */
 function render(){
@@ -1229,16 +1262,42 @@ function showRR(){
 ['f-price','f-tp','f-sl','f-lots','f-sym'].forEach(id => $('#'+id).oninput = showRR);
 
 let pendingImg = null;   /* รูปที่เลือกไว้ในฟอร์ม รอบันทึกพร้อมไม้ */
-$('#f-img').onchange = async e => {
-  const f = e.target.files[0];
-  if(!f){ pendingImg=null; $('#f-prev').hidden=true; return; }
+
+/* ทางเข้าเดียวของรูปในฟอร์ม — ใช้ร่วมกันทั้งเลือกไฟล์และวาง Ctrl+V
+   how = คำอธิบายที่จะขึ้นให้ผู้ใช้เห็นว่ารูปมาจากไหน */
+async function useFormImage(file, how){
+  if(!file){ pendingImg=null; $('#f-prev').hidden=true; return false; }
   try{
-    pendingImg = await shrink(f);
+    pendingImg = await shrink(file);
     $('#f-prev').innerHTML = `<img src="${pendingImg.dataUrl}" alt="ตัวอย่างรูปชาร์ตที่เลือก">`;
     $('#f-prev').hidden = false;
-    msg($('#f-msg'), `เลือกรูปแล้ว (ย่อเหลือ ~${fmt(pendingImg.kb,0)} KB) จะแนบให้ตอนกดบันทึก`, true);
-  }catch(err){ pendingImg=null; $('#f-prev').hidden=true; msg($('#f-msg'), err.message, false); }
-};
+    msg($('#f-msg'), `${how} (ย่อเหลือ ~${fmt(pendingImg.kb,0)} KB) จะแนบให้ตอนกดบันทึก`, true);
+    return true;
+  }catch(err){
+    pendingImg=null; $('#f-prev').hidden=true; msg($('#f-msg'), err.message, false);
+    return false;
+  }
+}
+
+$('#f-img').onchange = e => useFormImage(e.target.files[0], 'เลือกรูปแล้ว');
+
+/* วางรูปด้วย Ctrl+V / Cmd+V ระหว่างกรอกฟอร์ม — ทำ backtest บน PC จะแคปชาร์ตแล้ววางได้เลย
+   ดักที่ document เพราะ paste ยิงไปที่ element ที่ focus อยู่ ซึ่งจะเป็นช่องราคา/TP/SL
+   ไม่ใช่ตัวฟอร์ม ถ้าไปผูกกับ #sh-add จะไม่เคยทำงาน
+   เงื่อนไข: ฟอร์มต้องเปิดอยู่เท่านั้น จะได้ไม่ไปแย่งการวางข้อความที่อื่น */
+document.addEventListener('paste', e => {
+  if(!$('#sh-add').classList.contains('on')) return;
+  const items = (e.clipboardData && e.clipboardData.items) || [];
+  for(const it of items){
+    if(it.kind !== 'file' || it.type.indexOf('image/') !== 0) continue;
+    const f = it.getAsFile();
+    if(!f) continue;
+    e.preventDefault();                 /* กันไม่ให้ชื่อไฟล์หล่นลงช่องข้อความ */
+    $('#f-img').value = '';             /* เลือกไฟล์ไว้ก่อนหน้าถือว่าถูกแทนที่ */
+    useFormImage(f, 'วางรูปจากคลิปบอร์ดแล้ว 📋');
+    return;
+  }
+});
 
 function openAdd(){
   msgHide($('#f-msg'));
