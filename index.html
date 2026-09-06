@@ -273,6 +273,13 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 @keyframes p{0%,100%{opacity:.5}50%{opacity:.85}}
 
 /* ── ข่าวเศรษฐกิจ ───────────────────────────────────────── */
+/* แถบสถานะความสดของข่าว — ตอบ "อัปเดตหรือยัง" ให้เห็นก่อนเลื่อนดูรายการ */
+.nstat{display:flex;align-items:center;gap:8px;margin:10px 0 2px;
+  font-size:11.5px;color:var(--ink-2);min-height:26px}
+.nstat span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nstat.bad span{color:#f0c04a}
+.nstat button{flex:none;font-size:11.5px;padding:5px 10px;border-radius:999px;
+  border:1px solid var(--ring);background:var(--surface);color:var(--ink-2)}
 .daysep{font-size:12.5px;color:var(--muted);font-weight:600;margin:16px 0 8px;
   display:flex;align-items:center;gap:9px}
 .daysep::after{content:"";flex:1;height:1px;background:var(--grid)}
@@ -665,7 +672,7 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 'use strict';
 const TH_MONTH=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
   'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-const BUILD='2026-09-04.1';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
+const BUILD='2026-09-05.1';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
 const LS='gtpro.cfg', LSD='gtpro.data';
 const $=s=>document.querySelector(s);
 
@@ -760,10 +767,18 @@ const LSN='gtpro.news';
 const NEWS_TTL=10*60*1000;
 let newsBusy=false;
 
+/* newsAt = เวลาที่ "แอปดึงข่าวมา" / newsSrcAt = เวลาที่ "เซิร์ฟเวอร์ดึงจาก ForexFactory"
+   โชว์ทั้งคู่ไม่ได้เว่อร์ — ผู้ใช้เคยเจอแอปค้างเวอร์ชันเก่ามาแล้ว
+   ถ้าไม่บอกว่าข้อมูลสดแค่ไหน พอวันไหนไม่มีข่าวจะแยกไม่ออกว่า "ไม่มีข่าว" หรือ "แอปพัง" */
+let newsAt=0, newsSrcAt=0, newsErr='';
+
 function newsFromCache(){
   try{
     const o=JSON.parse(localStorage.getItem(LSN)||'null');
-    if(o && Date.now()-o.at < NEWS_TTL && Array.isArray(o.list)) return o.list;
+    if(o && Date.now()-o.at < NEWS_TTL && Array.isArray(o.list)){
+      newsAt=o.at; newsSrcAt=o.src||0;
+      return o.list;
+    }
   }catch(e){}
   return null;
 }
@@ -774,16 +789,20 @@ async function loadNews(force){
     if(c){ if(data){ data.news=c; renderNews(); newsTick(); } return; }
   }
   newsBusy=true;
+  if(force) renderNews();                     /* ให้เห็น "กำลังดึง…" ทันทีที่กด */
   const u=`${cfg.url}?api=1&key=${encodeURIComponent(cfg.key)}&act=news`;
   try{
     const r=await fetchJSON(u).catch(()=>fetchJSON(u));
     if(r && r.ok && Array.isArray(r.news)){
-      try{ localStorage.setItem(LSN,JSON.stringify({at:Date.now(),list:r.news})); }catch(e){}
-      if(data){ data.news=r.news; renderNews(); newsTick(); }
-    }
+      newsAt=Date.now(); newsSrcAt=+r.news_at||0; newsErr='';
+      try{ localStorage.setItem(LSN,JSON.stringify({at:newsAt,src:newsSrcAt,list:r.news})); }catch(e){}
+      if(data){ data.news=r.news; }
+    }else newsErr='เซิร์ฟเวอร์ตอบผิดรูปแบบ';
   }catch(e){
-    /* ข่าวโหลดไม่ได้ไม่ใช่เรื่องคอขาดบาดตาย — ใช้ของเก่าที่มีต่อไป */
-  }finally{ newsBusy=false; }
+    /* ข่าวโหลดไม่ได้ไม่ใช่เรื่องคอขาดบาดตาย — ใช้ของเก่าที่มีต่อไป แต่ต้องบอกผู้ใช้
+       ไม่โชว์ข้อความดิบของเบราว์เซอร์ ("Failed to fetch") เพราะอ่านแล้วไม่รู้ว่าต้องทำอะไรต่อ */
+    newsErr='ดึงข่าวไม่สำเร็จ (เน็ตไม่ถึงเซิร์ฟเวอร์)';
+  }finally{ newsBusy=false; renderNews(); newsTick(); }
 }
 /* ดึงรูปชาร์ตทีละใบ — ฝั่ง Apps Script ส่งกลับเป็น base64 ไฟล์จึงไม่ต้องแชร์สาธารณะ */
 function apiImg(id){
@@ -1519,12 +1538,42 @@ async function copyText(t){
   }catch(err){ return false; }
 }
 
+/* "เมื่อ 3 นาทีที่แล้ว" — ผู้ใช้อ่านง่ายกว่าเวลาเต็ม และบอกความสดได้ในตาเดียว */
+function agoText(ms){
+  if(!ms) return null;
+  const s=Math.round((Date.now()-ms)/1000);
+  if(s<0)    return 'เมื่อครู่';
+  if(s<90)   return 'เมื่อ '+fmt(s,0)+' วินาทีที่แล้ว';
+  const m=Math.round(s/60);
+  if(m<90)   return 'เมื่อ '+fmt(m,0)+' นาทีที่แล้ว';
+  const h=Math.round(m/60);
+  if(h<36)   return 'เมื่อ '+fmt(h,0)+' ชม.ที่แล้ว';
+  return 'เมื่อ '+fmt(Math.round(h/24),0)+' วันที่แล้ว';
+}
+
+/* แถบสถานะบนหัวหน้าข่าว — ตอบคำถาม "ข่าวอัปเดตหรือยัง" โดยไม่ต้องเดา */
+function newsStatusHtml(){
+  if(newsBusy) return '<div class="nstat"><span>⏳ กำลังดึงข่าว…</span></div>';
+  const bits=[];
+  if(newsAt)    bits.push('แอปดึง '+agoText(newsAt));
+  if(newsSrcAt) bits.push('ต้นทาง '+agoText(newsSrcAt));
+  return '<div class="nstat'+(newsErr?' bad':'')+'">'+
+           '<span>'+(newsErr ? '⚠ '+esc(newsErr)+' — แสดงชุดล่าสุดที่มี'
+                             : (bits.length?'🕐 '+esc(bits.join(' · ')):'')) + '</span>'+
+           '<button data-a="reload">↻ ดึงข่าวใหม่</button>'+
+         '</div>';
+}
+
 function renderNews(){
   const box=$('#newsList');
   const list=(data&&data.news)||[];
   if(!list.length){
-    box.innerHTML='<div class="empty">ยังไม่มีข้อมูลข่าว<br>'+
-      '<span style="font-size:12px">เปิดเมนู GTPro › 7 ในชีต แล้วรีเฟรชอีกครั้ง</span></div>';
+    /* วันเสาร์-อาทิตย์ปฏิทิน USD ว่างจริง ๆ ไม่ใช่แอปพัง — ต้องเขียนให้ชัด
+       ไม่งั้นผู้ใช้จะอ่านหน้าโล่งว่า "ข่าวไม่อัปเดต" */
+    box.innerHTML=newsStatusHtml()+
+      '<div class="empty">ช่วงนี้ไม่มีข่าว USD ระดับแรง/ปานกลาง<br>'+
+      '<span style="font-size:12px">ปฏิทินมักว่างช่วงเสาร์–อาทิตย์ '+
+      'ถ้ากด “ดึงข่าวใหม่” แล้วยังว่าง แปลว่าไม่มีข่าวจริง ๆ</span></div>';
     return;
   }
   /* นับข่าวของแต่ละวัน ไว้เติมท้ายหัวข้อวัน (ประกาศแล้วกี่ตัว เหลืออีกกี่ตัว) */
@@ -1534,7 +1583,7 @@ function renderNews(){
     (newsMins(e)<0 ? t.done++ : t.left++);
   });
 
-  let html='', day='', first=true;
+  let html=newsStatusHtml(), day='', first=true;
   list.forEach((e,idx)=>{
     const d=nDate(e);
     if(d!==day){
@@ -1593,6 +1642,9 @@ function askClaude(e){
    ถ้าคัดลอกอัตโนมัติไม่ผ่าน (WebView เก่า / เบราว์เซอร์ไม่ให้สิทธิ์)
    จะกางกล่องข้อความให้เลือกคัดลอกเองแทน ไม่ปล่อยให้ทางตัน */
 $('#newsList').onclick = async e => {
+  /* ดึงข่าวใหม่ — ข้ามแคช 10 นาทีของแอปไปเลย (force) */
+  if(e.target.closest('[data-a="reload"]')){ loadNews(true); return; }
+
   const ask = e.target.closest('[data-a="ask"]');
   if(ask){
     const c = ask.closest('.nitem');

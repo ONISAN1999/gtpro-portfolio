@@ -1752,7 +1752,9 @@ function doGet(e) {
     if (p.act === 'add')    return jsonOut_(withData_(apiAddTrade_(p), p), p.callback);
     if (p.act === 'close')  return jsonOut_(withData_(apiCloseTrade_(p), p), p.callback);
     if (p.act === 'delete') return jsonOut_(withData_(apiDeleteTrade_(p), p), p.callback);
-    if (p.act === 'news')   return jsonOut_({ ok: true, news: newsForApp_() }, p.callback);
+    // news_at = เวลาที่ดึงจาก ForexFactory สำเร็จครั้งล่าสุด แอปเอาไปโชว์ให้เห็นว่าสดแค่ไหน
+    if (p.act === 'news')   return jsonOut_({ ok: true, news: newsForApp_(),
+                                              news_at: newsFetchedAt_() }, p.callback);
 
     return jsonOut_(buildDashboardData_(p.month || '', p.mode || '', p.news === '1'), p.callback);
   } catch (err) {
@@ -2332,7 +2334,71 @@ function normalizeNews_(raw) {
   return out;
 }
 
-/** อ่านปฏิทิน (มีแคช + ตัวสำรองเผื่อแหล่งข้อมูลล่ม) */
+/* ══ คลังข่าวของเราเอง ══
+ * ทำไมต้องเก็บเอง: ForexFactory มีไฟล์เดียวคือ ff_calendar_thisweek.json
+ * และมัน "หมุน" ไปเป็นสัปดาห์ถัดไปตั้งแต่คืนวันศุกร์ — พอถึงเสาร์-อาทิตย์
+ * ผลข่าวของสัปดาห์ที่เพิ่งผ่าน (เช่น NFP คืนวันศุกร์) จะหายไปจากต้นทางทั้งหมด
+ * (ff_calendar_lastweek.json และ _nextweek.json ตอบ 404 ทั้งคู่ — ตรวจแล้ว 5 ก.ย. 2026)
+ * ถ้าไม่เก็บเอง ผู้ใช้เปิดแอปเช้าวันเสาร์จะเห็นหน้าข่าวโล่ง แล้วเข้าใจว่าแอปเสีย
+ *
+ * เก็บใน ScriptProperties ค่าหนึ่งค่าจำกัด 9 KB จึงย่อชื่อคีย์ + ตัดช่วงเวลาให้แคบ
+ * (ข่าว USD High/Medium มีราว 9-12 รายการต่อสัปดาห์ ช่วงนี้กินราว 2-3 KB) */
+var NEWS_ARCHIVE_KEY = 'NEWS_ARCHIVE_V1';
+var NEWS_AT_KEY      = 'NEWS_FETCHED_AT';
+var NEWS_KEEP_BACK   = 3;            // เก็บย้อนหลังกี่วัน
+var NEWS_KEEP_FWD    = 9;            // เก็บล่วงหน้ากี่วัน (แอปโชว์ 7)
+var NEWS_ARCHIVE_MAX = 8000;         // เผื่อขอบ 9 KB ของ ScriptProperties
+
+/* ย่อ/คลายรูปแบบเก็บ — ชื่อคีย์สั้นเพื่อประหยัดที่ */
+function newsPack_(e) {
+  return { i:e.id, t:e.title, m:e.impact, s:e.ts,
+           f:e.forecast, p:e.previous, a:e.actual, d:e.dir, k:e.talk?1:0 };
+}
+function newsUnpack_(o) {
+  return { id:o.i, title:o.t, impact:o.m, ts:o.s,
+           when: Utilities.formatDate(new Date(o.s), tz(), 'yyyy-MM-dd HH:mm'),
+           forecast:o.f||'', previous:o.p||'', actual:o.a||'',
+           dir:o.d||0, talk:!!o.k };
+}
+
+function readArchive_() {
+  try {
+    var s = PropertiesService.getScriptProperties().getProperty(NEWS_ARCHIVE_KEY);
+    if (s) { var a = JSON.parse(s); if (a instanceof Array) return a; }
+  } catch (e) {}
+  return [];
+}
+
+/** รวมของใหม่เข้ากับคลัง — ของใหม่ทับของเก่าเสมอ (actual เพิ่งมีหลังประกาศ) */
+function mergeArchive_(fresh) {
+  var now = Date.now();
+  var lo = now - NEWS_KEEP_BACK * 86400000;
+  var hi = now + NEWS_KEEP_FWD  * 86400000;
+
+  var byId = {}, order = [];
+  readArchive_().forEach(function (o) { if (!byId[o.i]) order.push(o.i); byId[o.i] = o; });
+  fresh.forEach(function (e) { var o = newsPack_(e); if (!byId[o.i]) order.push(o.i); byId[o.i] = o; });
+
+  var keep = [];
+  order.forEach(function (id) { var o = byId[id]; if (o.s >= lo && o.s <= hi) keep.push(o); });
+  keep.sort(function (a, b) { return a.s - b.s; });
+
+  // กันล้น 9 KB — ตัดตัวเก่าสุดออกก่อน ของอนาคตสำคัญกว่าประวัติ
+  var s = JSON.stringify(keep);
+  while (s.length > NEWS_ARCHIVE_MAX && keep.length > 1) { keep.shift(); s = JSON.stringify(keep); }
+  try { PropertiesService.getScriptProperties().setProperty(NEWS_ARCHIVE_KEY, s); } catch (e) {}
+
+  return keep.map(newsUnpack_);
+}
+
+/** เวลาที่ดึงจากต้นทางสำเร็จครั้งล่าสุด (ms) — แอปเอาไปโชว์ว่า "อัปเดตเมื่อ …" */
+function newsFetchedAt_() {
+  var v = 0;
+  try { v = +(PropertiesService.getScriptProperties().getProperty(NEWS_AT_KEY) || 0); } catch (e) {}
+  return v || 0;
+}
+
+/** อ่านปฏิทิน (แคช 30 นาที + คลังของเราเองเผื่อต้นทางหมุนสัปดาห์/ล่ม) */
 function readNews_(force) {
   var c = CacheService.getScriptCache();
   if (!force) {
@@ -2340,46 +2406,47 @@ function readNews_(force) {
     if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   }
 
-  var list = normalizeNews_(fetchNewsRaw_());
-  if (list.length) {
-    try { c.put(NEWS_CACHE_KEY, JSON.stringify(list), NEWS_CACHE_SEC); } catch (e) {}
-    try {
-      PropertiesService.getScriptProperties()
-        .setProperty('NEWS_BACKUP', JSON.stringify(list).substring(0, 400000));
-    } catch (e) {}
-    return list;
+  var fresh = normalizeNews_(fetchNewsRaw_());
+  if (fresh.length) {
+    try { PropertiesService.getScriptProperties().setProperty(NEWS_AT_KEY, String(Date.now())); } catch (e) {}
   }
 
-  // ดึงไม่ได้ → ใช้ชุดล่าสุดที่เคยดึงสำเร็จ ดีกว่าหน้าว่าง
-  try {
-    var b = PropertiesService.getScriptProperties().getProperty('NEWS_BACKUP');
-    if (b) return JSON.parse(b);
-  } catch (e) {}
-  return [];
+  // ดึงไม่ได้ → fresh ว่าง แต่คลังยังอยู่ ไม่ปล่อยให้หน้าข่าวโล่ง
+  var list = mergeArchive_(fresh);
+  if (list.length) { try { c.put(NEWS_CACHE_KEY, JSON.stringify(list), NEWS_CACHE_SEC); } catch (e) {} }
+  return list;
 }
 
 /**
- * ข่าวที่ส่งให้แอป — ตั้งแต่ 00:00 ของวันนี้ ถึงอีก 7 วัน
+ * ข่าวที่ส่งให้แอป — ตั้งแต่ 00:00 ของ 2 วันก่อน ถึงอีก 7 วัน
  *
- * ทำไมนับจากเที่ยงคืน ไม่ใช่ "ย้อนหลัง 18 ชม.":
+ * ทำไมนับเป็น "วัน" ไม่ใช่ "ย้อนหลัง 18 ชม.":
  *   ผู้ใช้ต้องการเห็น "ประวัติของวันนี้" ครบทั้งวัน ถ้าใช้ช่วงเวลาถอยหลังแบบตายตัว
  *   ข่าวที่ประกาศตอนเช้ามืดจะหลุดหายไปเมื่อเวลาผ่านไปพอสมควร
  * เทียบด้วยสตริงวันที่ (yyyy-MM-dd) ตรง ๆ จะได้ไม่ต้องคำนวณ offset ของโซนเวลาเอง
  *
+ * ทำไมต้องเผื่อย้อนหลัง 2 วัน ไม่ใช่แค่วันนี้:
+ *   ข่าว USD แรง ๆ กระจุกอยู่วันธรรมดา พอถึงเสาร์-อาทิตย์จะไม่มีข่าว "ของวันนี้" เลย
+ *   ถ้าตัดที่เที่ยงคืนวันนี้ หน้าข่าวจะโล่งทั้งสุดสัปดาห์ ดูเหมือนแอปพัง
+ *   เผื่อ 2 วันทำให้ยังเห็นผลข่าวคืนวันศุกร์ (NFP/CPI) ต่อได้ตลอดสุดสัปดาห์
+ *
  * ใส่ mins (นาทีที่เหลือ, ติดลบ = ผ่านไปแล้ว) ให้แอปนับถอยหลัง/เตือนได้
  */
+var NEWS_SHOW_BACK = 2;              // แสดงย้อนหลังกี่วัน
+
 function newsForApp_() {
   var all = readNews_(false);
   var now = Date.now();
   var to  = now + 7 * 24 * 3600 * 1000;
-  var todayStr = Utilities.formatDate(new Date(now), tz(), 'yyyy-MM-dd');
+  var fromStr = Utilities.formatDate(new Date(now - NEWS_SHOW_BACK * 86400000),
+                                     tz(), 'yyyy-MM-dd');
 
   var out = [];
   for (var i = 0; i < all.length; i++) {
     var e = all[i];
     if (e.ts > to) continue;
     // e.when คือ 'yyyy-MM-dd HH:mm' ตามโซนเวลาชีตอยู่แล้ว เทียบสตริงได้เลย
-    if (String(e.when).substring(0, 10) < todayStr) continue;
+    if (String(e.when).substring(0, 10) < fromStr) continue;
     out.push({
       id: e.id, title: e.title, impact: e.impact, when: e.when,
       forecast: e.forecast, previous: e.previous, actual: e.actual,
