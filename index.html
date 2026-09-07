@@ -77,6 +77,22 @@ header{
 #refresh.fail .rpct{color:var(--loss)}
 .stale{font-size:12px;color:var(--muted);padding:0 0 8px;display:none}
 .stale.on{display:block}
+/* คิวซิงก์: บันทึกลงเครื่องแล้ว รอส่งขึ้นชีต — ต้องเห็นได้จากทุกหน้า
+   ไม่งั้นผู้ใช้จะไม่รู้ว่ามีไม้ค้างอยู่ แล้วนึกว่าบันทึกหาย */
+.syncbar{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:8px;
+  padding:7px 11px;border-radius:11px;border:1px solid var(--ring);background:var(--surface)}
+/* display:flex ชนะ [hidden]{display:none} ของเบราว์เซอร์ ต้องเขียนทับเอง
+   ไม่งั้นแถบจะค้างอยู่ทั้งที่คิวว่างแล้ว */
+.syncbar[hidden]{display:none}
+.syncbar span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.syncbar.bad{border-color:#f0c04a}
+.syncbar.bad span{color:#f0c04a}
+.syncbar button{flex:none;font-size:11.5px;padding:4px 10px;border-radius:999px;
+  border:1px solid var(--ring);background:var(--plane);color:var(--ink-2)}
+/* การ์ดไม้ที่ยังไม่ขึ้นชีต — จางกว่านิดหนึ่ง + ขอบประ ให้รู้ว่ายังไม่จบ */
+.trade.queued{border-style:dashed;opacity:.9}
+.qtag{font-size:11px;color:var(--ink-2)}
+.qtag.bad{color:#f0c04a}
 
 /* ── การ์ด KPI ───────────────────────────────────────────── */
 .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
@@ -390,6 +406,8 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
     </button>
   </div>
   <div class="wrap"><div class="stale" id="stale"></div></div>
+  <!-- แถบคิวซิงก์ — โผล่ทุกหน้าเมื่อมีไม้ที่บันทึกไว้แล้วแต่ยังไม่ขึ้นชีต -->
+  <div class="wrap"><div class="syncbar" id="syncbar" hidden></div></div>
   <div class="wrap" id="modeWrap" hidden>
     <div class="modesw" role="group" aria-label="เลือกกระเป๋า">
       <button data-m="LIVE" class="on">เทรดจริง</button>
@@ -763,7 +781,7 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 'use strict';
 const TH_MONTH=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
   'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-const BUILD='2026-09-06.2';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
+const BUILD='2026-09-07.1';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
 const LS='gtpro.cfg', LSD='gtpro.data';
 const $=s=>document.querySelector(s);
 
@@ -983,6 +1001,7 @@ function syncOnReturn(){
   if(document.hidden) return;
   if(!cfg || !cfg.url) return;
   if(navigator.onLine === false) return;
+  flushQueue();                                 /* มีไม้ค้างคิว ส่งต่อให้จบก่อน */
   if(sheetOpen()) return;                       /* กำลังกรอกฟอร์มอยู่ อย่าวาดหน้าใหม่ใต้มือ */
   if(Date.now() - lastSyncAt < SYNC_GAP) return;
   refresh();
@@ -1001,6 +1020,7 @@ function render(){
   $('#testbar').classList.toggle('on', mode==='TEST');
   document.querySelectorAll('.modesw button')
     .forEach(b=>b.classList.toggle('on', b.dataset.m===mode));
+  renderSyncBar();
   renderCal(); renderEq(); renderOpen(); renderHist(); renderNews(); newsTick();
 }
 
@@ -1138,7 +1158,8 @@ function renderEq(){
 
 /* ── ไม้ที่เปิดอยู่ ── */
 function renderOpen(){
-  const list=data.open||[];
+  /* ไม้ที่ยังอยู่ในคิวขึ้นก่อน — เพิ่งกดบันทึกต้องเห็นทันทีว่ามันอยู่ตรงนั้นจริง */
+  const list=queuedTrades().concat(data.open||[]);
   const tot=list.reduce((a,b)=>a+(b.float_usd||0),0);
   const known=list.some(t=>t.float_usd!=null);
   $('#o-float').textContent=known?sgn(tot)+' USD':'—';
@@ -1150,14 +1171,18 @@ function renderOpen(){
 
   $('#openList').innerHTML=list.map(t=>{
     const d=t.digits==null?2:t.digits;
-    return `<div class="trade" data-id="${esc(t.id)}">
+    const qs = !t.queued ? '' :
+      (t.qstate==='failed'
+        ? `<div class="qtag bad">⚠ ส่งขึ้นชีตไม่ผ่าน (${esc(t.qerror||'')}) — ยังเก็บไว้ให้</div>`
+        : `<div class="qtag">⏳ บันทึกในเครื่องแล้ว กำลังส่งขึ้นชีต</div>`);
+    return `<div class="trade${t.queued?' queued':''}" data-id="${esc(t.id)}">
       <div class="trow">
         <span class="pill ${t.side==='BUY'?'buy':'sell'}">${t.side}</span>
         <span class="sym">${esc(t.symbol)}</span>
         <span class="tf">${esc(t.tf)}</span>
         ${t.mode==='TEST'?'<span class="tf" style="color:#f0c04a">TEST</span>':''}
         <span class="fl ${cls(t.float_usd)}">${t.float_usd==null?'—':sgn(t.float_usd)}
-          <small>${t.float_usd==null?'ดึงราคาไม่ได้':(t.float_r!=null?sgn(t.float_r,2)+' R':'USD')}</small></span>
+          <small>${t.float_usd==null?(t.queued?'รอขึ้นชีต':'ดึงราคาไม่ได้'):(t.float_r!=null?sgn(t.float_r,2)+' R':'USD')}</small></span>
       </div>
       <div class="meta">
         <span><b>เข้า</b> ${fmt(t.entry,d)}</span>
@@ -1166,12 +1191,13 @@ function renderOpen(){
         ${t.sl?`<span><b>SL</b> ${fmt(t.sl,d)}</span>`:''}
         <span><b>ขนาด</b> ${fmt(t.lots,2)} lot</span>
       </div>
-      <div class="act">
+      ${qs}
+      ${t.queued?'':`<div class="act">
         <button class="prim" data-a="close">ปิดไม้</button>
         <button data-a="edit">✏️ แก้ไข</button>
         <button data-a="img">${t.chart?'🖼 ดูรูป':'🖼 แนบรูป'}</button>
         <button class="danger" data-a="del">ลบ</button>
-      </div>
+      </div>`}
       <div class="thumb" hidden></div></div>`;
   }).join('');
 }
@@ -1221,6 +1247,7 @@ function renderHist(){
       <div class="meta">
         <span><b>เข้า</b> ${fmt(t.entry,d)}</span>
         <span><b>ออก</b> ${fmt(t.exit,d)}</span>
+        <span><b>ขนาด</b> ${fmt(t.lots,2)} lot</span>
         ${t.tp?`<span><b>TP</b> ${fmt(t.tp,d)}</span>`:''}
         ${t.sl?`<span><b>SL</b> ${fmt(t.sl,d)}</span>`:''}
         <span><b>ถือ</b> ${fmt(t.duration_min,0)} นาที</span>
@@ -1341,12 +1368,15 @@ function showRR(){
   if(!isFinite(e) || !isFinite(sl)){ $('#f-rr').innerHTML=''; return; }
   const risk = (e-sl)*dir, reward = isFinite(tp) ? (tp-e)*dir : null;
   const bad = risk<=0 ? ' ⚠️ SL อยู่ผิดฝั่ง' : '';
+  /* บอก lot ที่ใช้คิดด้วย — ตัวเลข USD ขึ้นกับ lot ทั้งหมด
+     ถ้ากรอก lot ผิด (0.1 แทน 0.01) ตัวเลขจะเพี้ยน 10 เท่าโดยไม่มีอะไรเตือน */
   $('#f-rr').innerHTML =
     `เสี่ยง <b>${fmt(Math.abs(risk),2)}</b> จุด` +
     (lots&&vpp ? ` ≈ <b>${fmt(Math.abs(risk)*vpp*lots,2)} USD</b>` : '') +
     (reward!=null ? ` · ได้ <b>${fmt(Math.abs(reward),2)}</b> จุด` +
       (lots&&vpp ? ` ≈ <b>${fmt(Math.abs(reward)*vpp*lots,2)} USD</b>` : '') +
-      ` · R:R <b>1 : ${fmt(Math.abs(reward/risk),2)}</b>` : '') + bad;
+      ` · R:R <b>1 : ${fmt(Math.abs(reward/risk),2)}</b>` : '') +
+    (lots&&vpp ? ` <span class="hint" style="margin:0">(คิดที่ ${fmt(lots,2)} lot)</span>` : '') + bad;
 }
 ['f-price','f-tp','f-sl','f-lots','f-sym'].forEach(id => $('#'+id).oninput = showRR);
 
@@ -1411,44 +1441,120 @@ $('#add-x').onclick = closeAdd;
 $('#add-cancel').onclick = closeAdd;
 $('#sh-add').onclick = e => { if(e.target.id==='sh-add') closeAdd(); };
 
-$('#add-save').onclick = async () => {
-  const btn = $('#add-save'), m = $('#f-msg');
-  const price = $('#f-price').value.trim();
-  if(!$('#f-sym').value.trim()) return msg(m,'ยังไม่ได้กรอกสัญลักษณ์',false);
-  if(!price) return msg(m,'ยังไม่ได้กรอกราคาเข้า',false);
-  btn.disabled = true; btn.textContent = 'กำลังบันทึก…'; msgHide(m);
+/* ══════════ คิวซิงก์: บันทึกลงเครื่องก่อน แล้วค่อยส่งขึ้นชีตเบื้องหลัง ══════════
+ *
+ * ทำไม: Apps Script ตอบ 3-4.5 วิต่อครั้ง และนั่นคือเพดานของมันเอง
+ * (วัดแล้ว คำขอเปล่า ๆ ที่ไม่ทำอะไรเลยก็ยังใช้ 2.3-3.0 วิ) ตอนทำ backtest ลงไม้รัว ๆ
+ * การรอทีละ 4 วิคือสะดุดทุกไม้ — จึงบันทึกลงเครื่องแล้วปิดฟอร์มทันที (< 0.3 วิ)
+ *
+ * ⚠️ กติกาที่ห้ามพลาด: ข้อมูลต้องไม่หายแม้แต่ไม้เดียว
+ *   - คิวอยู่ใน localStorage เขียนทันทีที่กดบันทึก ปิดแอป/เน็ตหลุด/รีสตาร์ตก็ยังอยู่
+ *   - ลบออกจากคิว "หลังเซิร์ฟเวอร์ตอบ ok เท่านั้น" ไม่ใช่ตอนยิงออกไป
+ *   - ส่งไม่ผ่านจะไม่ทิ้ง แต่ค้างไว้ให้เห็นพร้อมปุ่มลองใหม่ ไม่มีการเงียบหาย
+ *   - รูปเก็บไปกับคิวด้วย (base64) จะได้ไม่ต้องให้ผู้ใช้แนบใหม่
+ */
+const LSQ = 'gtpro.queue';
+let queue = [];
+try{ const q = JSON.parse(localStorage.getItem(LSQ)||'[]'); if(Array.isArray(q)) queue = q; }catch(e){}
+function saveQueue(){ try{ localStorage.setItem(LSQ, JSON.stringify(queue)); }catch(e){} }
+
+/* แปลงรายการในคิวเป็นทรงเดียวกับไม้เปิด เพื่อเอาไปวาดในหน้าไม้เปิดได้เลย */
+function queuedTrades(){
+  return queue.filter(q => q.p.mode === mode).map(q => ({
+    id: q.qid, queued: true, qstate: q.state, qerror: q.error,
+    symbol: q.p.symbol, tf: q.p.tf || 'APP', side: q.p.side,
+    lots: parseFloat(q.p.lots) || 0, mode: q.p.mode,
+    entry: parseFloat(q.p.price), tp: parseFloat(q.p.tp) || '', sl: parseFloat(q.p.sl) || '',
+    entry_time: q.p.when, note: q.p.note, digits: 2,
+    last: null, float_usd: null, float_r: null, chart: ''
+  }));
+}
+
+function renderSyncBar(){
+  const bar = $('#syncbar');
+  if(!queue.length){ bar.hidden = true; return; }
+  const bad = queue.filter(q => q.state === 'failed').length;
+  const busy = queue.length - bad;
+  bar.hidden = false;
+  bar.classList.toggle('bad', bad > 0 && busy === 0);
+  bar.innerHTML =
+    '<span>' + (bad
+      ? '⚠ ส่งขึ้นชีตไม่ผ่าน ' + fmt(bad,0) + ' ไม้ — ยังเก็บไว้ให้ ไม่หายไปไหน'
+      : '⏳ กำลังส่งขึ้นชีต ' + fmt(busy,0) + ' ไม้ (ใช้งานต่อได้เลย)') + '</span>' +
+    (bad ? '<button data-a="retry">ลองใหม่</button>' : '');
+}
+$('#syncbar').onclick = e => {
+  if(!e.target.closest('[data-a="retry"]')) return;
+  queue.forEach(q => { if(q.state === 'failed'){ q.state = 'pending'; q.error = ''; } });
+  saveQueue(); renderSyncBar(); renderOpen(); flushQueue();
+};
+
+let flushing = false;
+async function flushQueue(){
+  if(flushing || !cfg || !cfg.url) return;
+  const item = queue.find(q => q.state === 'pending');
+  if(!item) return;
+
+  flushing = true;
+  item.state = 'sending'; saveQueue(); renderSyncBar(); renderOpen();
   try{
-    const r = await apiAct({
-      act:'add', symbol:$('#f-sym').value.trim(), side:getSide(), mode:getMode(),
-      tf:$('#f-tf').value.trim(), price, tp:$('#f-tp').value.trim(),
-      sl:$('#f-sl').value.trim(), lots:$('#f-lots').value.trim(),
-      when:dtOut($('#f-when').value), note:$('#f-note').value.trim()
-    });
-    if(!r || r.ok===false) throw new Error((r&&r.error)||'บันทึกไม่สำเร็จ');
-    if(r.status==='duplicate') msg(m,'ไม้นี้บันทึกไปแล้ว (ระบบกันซ้ำ)',false);
-    else{
-      let extra = '';
-      if(pendingImg){
-        if(r.trade_id){
-          btn.textContent = 'กำลังอัปโหลดรูป…';
-          try{ await apiUpload(r.trade_id, pendingImg); extra = ' + แนบรูปแล้ว 🖼'; }
-          catch(err){ extra = ' (แต่แนบรูปไม่สำเร็จ: '+err.message+')'; }
-        }else{
-          extra = ' (ไม่ได้รหัสไม้กลับมา เลยยังไม่ได้แนบรูป — แนบทีหลังจากหน้าไม้เปิดได้)';
-        }
-      }
-      msg(m,'บันทึกแล้ว ✓ '+(r.result||'')+extra, !extra.includes('ไม่สำเร็จ'));
-      ['f-price','f-tp','f-sl','f-note'].forEach(id=>$('#'+id).value='');
-      $('#f-rr').innerHTML=''; $('#f-img').value=''; $('#f-prev').hidden=true; pendingImg=null;
-      if(getMode()!==mode){ mode=getMode(); }   // เพิ่งลงคนละกระเป๋า → สลับตาม
-      /* เซิร์ฟเวอร์แนบข้อมูลชุดใหม่มาให้แล้ว ไม่ต้องยิงรีเฟรชอีกรอบ (ประหยัดไป ~4.5 วิ)
-         ถ้าคนละกระเป๋ากับที่ส่งไป ค่อยยิงใหม่ */
-      applyData(r.data);
-      if(!r.data || r.data.mode!==mode) refresh();
-      setTimeout(closeAdd, 700);
+    const r = await apiAct(Object.assign({ act:'add' }, item.p));
+    if(!r || r.ok === false) throw new Error((r && r.error) || 'บันทึกไม่สำเร็จ');
+
+    /* ยิงซ้ำเพราะเน็ตสะดุดแล้วชีตรับไปแล้ว → ระบบกันซ้ำตอบ duplicate
+       ถือว่าสำเร็จ ไม่ใช่ error ไม่งั้นไม้จะค้างคิวตลอดกาล */
+    let imgOk = false;
+    if(item.img && r.trade_id){
+      try{ await apiUpload(r.trade_id, item.img); imgOk = true; }catch(e){}
     }
-  }catch(err){ msg(m,'ผิดพลาด: '+err.message,false); }
-  finally{ btn.disabled=false; btn.textContent='บันทึกไม้'; }
+
+    queue = queue.filter(q => q.qid !== item.qid);   /* ลบหลังยืนยันแล้วเท่านั้น */
+    saveQueue();
+    /* แนบรูปสำเร็จ = ชุดข้อมูลที่แนบมากับ add ยังไม่มี chart_id ต้องดึงใหม่ */
+    if(imgOk || !applyData(r.data)) refresh();
+    renderSyncBar();
+  }catch(err){
+    item.state = 'failed';
+    item.error = (err && err.message) || 'ส่งไม่สำเร็จ';
+    item.tries = (item.tries || 0) + 1;
+    saveQueue(); renderSyncBar(); renderOpen();
+  }finally{ flushing = false; }
+
+  if(queue.some(q => q.state === 'pending')) flushQueue();
+}
+/* เน็ตกลับมา / กลับมาที่หน้าจอ → ลองส่งของที่ค้างอีกรอบ */
+window.addEventListener('online', () => {
+  queue.forEach(q => { if(q.state === 'failed') q.state = 'pending'; });
+  saveQueue(); flushQueue();
+});
+
+$('#add-save').onclick = () => {
+  const m = $('#f-msg');
+  const price = $('#f-price').value.trim();
+  const sym = $('#f-sym').value.trim();
+  if(!sym)   return msg(m,'ยังไม่ได้กรอกสัญลักษณ์',false);
+  if(!price) return msg(m,'ยังไม่ได้กรอกราคาเข้า',false);
+
+  const lots = $('#f-lots').value.trim();
+  const p = {
+    symbol: sym, side: getSide(), mode: getMode(), tf: $('#f-tf').value.trim(),
+    price, tp: $('#f-tp').value.trim(), sl: $('#f-sl').value.trim(), lots,
+    when: dtOut($('#f-when').value), note: $('#f-note').value.trim()
+  };
+  queue.push({ qid: 'q' + Date.now() + Math.random().toString(36).slice(2,6),
+               at: Date.now(), state: 'pending', p: p,
+               img: pendingImg ? { b64: pendingImg.b64, mime: pendingImg.mime } : null });
+  saveQueue();
+
+  msg(m, `บันทึกแล้ว ✓ ${p.side} ${sym} ${fmt(parseFloat(lots)||0,2)} lot @ ${price}` +
+         (pendingImg ? ' + รูป 🖼' : '') + ' — กำลังส่งขึ้นชีต', true);
+
+  ['f-price','f-tp','f-sl','f-note'].forEach(id => $('#'+id).value='');
+  $('#f-rr').innerHTML=''; $('#f-img').value=''; $('#f-prev').hidden=true; pendingImg=null;
+  if(getMode() !== mode){ mode = getMode(); }   // เพิ่งลงคนละกระเป๋า → สลับตาม
+  renderSyncBar(); renderOpen();
+  setTimeout(closeAdd, 450);
+  flushQueue();                                  /* ส่งเบื้องหลัง ไม่ await */
 };
 
 /* ── ปิดไม้ ── */
@@ -2177,7 +2283,10 @@ cfg=loadCfg();
 if(cfg){ $('#url').value=cfg.url||''; $('#key').value=cfg.key||''; }
 const cached=localStorage.getItem(dataKey())||localStorage.getItem(LSD);
 if(cached){ try{ data=JSON.parse(cached).d; render(); }catch(e){} }
-if(cfg&&cfg.url) refresh(); else go('set');
+/* ไม้ที่ค้างคิวจากรอบก่อน (ปิดแอปไปตอนเน็ตหลุด) ต้องโผล่และส่งต่อทันทีที่เปิดแอป */
+renderSyncBar();
+if(queue.length){ queue.forEach(q=>{ if(q.state==='sending') q.state='pending'; }); saveQueue(); }
+if(cfg&&cfg.url){ refresh(); flushQueue(); } else go('set');
 
 if('serviceWorker' in navigator)
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
