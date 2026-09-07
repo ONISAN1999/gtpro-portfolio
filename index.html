@@ -781,7 +781,7 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 'use strict';
 const TH_MONTH=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
   'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-const BUILD='2026-09-07.1';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
+const BUILD='2026-09-07.2';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
 const LS='gtpro.cfg', LSD='gtpro.data';
 const $=s=>document.querySelector(s);
 
@@ -1157,6 +1157,14 @@ function renderEq(){
 }
 
 /* ── ไม้ที่เปิดอยู่ ── */
+/* 'yyyy-MM-dd HH:mm:ss' → 'dd/MM HH:mm' — ไม้เปิดต้องบอกด้วยว่าลงไว้ตอนไหน
+   ลงหลายไม้ในวันเดียวกันแล้วไม่มีเวลา จะแยกไม่ออกว่าใบไหนคือใบไหน */
+function shortWhen(s){
+  const t = String(s||'');
+  if(t.length < 16) return t;
+  return t.slice(8,10)+'/'+t.slice(5,7)+' '+t.slice(11,16);
+}
+
 function renderOpen(){
   /* ไม้ที่ยังอยู่ในคิวขึ้นก่อน — เพิ่งกดบันทึกต้องเห็นทันทีว่ามันอยู่ตรงนั้นจริง */
   const list=queuedTrades().concat(data.open||[]);
@@ -1186,6 +1194,7 @@ function renderOpen(){
       </div>
       <div class="meta">
         <span><b>เข้า</b> ${fmt(t.entry,d)}</span>
+        <span><b>เมื่อ</b> ${esc(shortWhen(t.entry_time))}</span>
         <span><b>ล่าสุด</b> ${t.last==null?'—':fmt(t.last,d)}</span>
         ${t.tp?`<span><b>TP</b> ${fmt(t.tp,d)}</span>`:''}
         ${t.sl?`<span><b>SL</b> ${fmt(t.sl,d)}</span>`:''}

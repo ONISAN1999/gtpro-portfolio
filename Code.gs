@@ -867,10 +867,37 @@ function getRange_(symbol, sinceMs) {
   try {
     if (m.provider === 'binance')  return binanceRange_(api, sinceMs);
     if (m.provider === 'yahoo')    return yahooRange_(api, sinceMs);
+    if (m.provider === 'goldapi')  return spotGoldRange_(api);
   } catch (e) {
     Logger.log('ดึงราคา ' + symbol + ' ไม่สำเร็จ: ' + e);
   }
   return null;   // provider = manual → ต้องส่งสัญญาณ CLOSE เอง
+}
+
+/**
+ * ราคาทองคำ spot (XAU/USD) — ตัวเดียวกับที่โบรกเกอร์ forex ใช้
+ *
+ * ทำไมต้องมี provider นี้:
+ *   - Yahoo ไม่มี spot ทอง มีแต่ GC=F ซึ่งเป็น "ทองล่วงหน้า COMEX"
+ *     ราคาสูงกว่า spot หลายสิบ USD (7 ก.ย. 2026 วัดได้ GC=F 4,476.60 ขณะ spot 4,399.20
+ *     ห่างกัน 77 USD → กำไรลอยเพี้ยนไป 77 USD ต่อ 0.01 lot)
+ *   - Binance มี PAXGUSDT ที่เกาะ spot ได้ดี แต่ยิงจาก Apps Script ไม่ได้
+ *     Google ออกเน็ตด้วย IP สหรัฐฯ ซึ่ง Binance บล็อก (ลองแล้วได้ค่าว่างทุกครั้ง)
+ *
+ * ข้อจำกัด: แหล่งนี้ให้ราคาเดียว ไม่มี high/low จึงคืนค่าเดียวกันทั้งสามช่อง
+ * ผลคือ monitorOpenTrades เห็นเฉพาะราคาที่สุ่มได้ทุก 5 นาที ไม่เห็นไส้เทียนระหว่างนั้น
+ * = อาจพลาดการชน TP/SL แบบแวบเดียว ซึ่งปลอดภัยกว่าการชนผิดเพราะใช้ราคาผิดตัว
+ */
+function spotGoldRange_(sym) {
+  var url = 'https://api.gold-api.com/price/' + encodeURIComponent(sym || 'XAU');
+  var r = UrlFetchApp.fetch(url, {
+    muteHttpExceptions: true, headers: { 'Accept': 'application/json' }
+  });
+  if (r.getResponseCode() !== 200) return null;
+  var j = JSON.parse(r.getContentText());
+  var p = Number(j && j.price);
+  if (!isFinite(p) || p <= 0) return null;
+  return { high: p, low: p, last: p };
 }
 
 function binanceRange_(sym, sinceMs) {
