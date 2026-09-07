@@ -1,7 +1,7 @@
 {
-  "versionCode": 2,
-  "versionName": "1.1",
-  "apk": "https://onisan1999.github.io/gtpro-portfolio/releases/gtpro-portfolio-1.1.apk",
-  "notes": "เพิ่มหน้าข่าวเศรษฐกิจ + เตือนก่อนข่าวแรง, เสียงและแอนิเมชันตอนกดปุ่ม",
-  "released": "2026-09-02"
+  "versionCode": 3,
+  "versionName": "1.2",
+  "apk": "https://onisan1999.github.io/gtpro-portfolio/releases/gtpro-portfolio-1.2.apk",
+  "notes": "แก้ไม้ที่บันทึกไปแล้วได้ทั้งไม้เปิดและไม้ที่ปิดแล้ว, วางรูปด้วย Ctrl+V บน PC, ซิงก์อัตโนมัติเมื่อกลับมาที่หน้าจอ, ปุ่ม Back ปิดฟอร์มได้ทุกแบบ",
+  "released": "2026-09-07"
 }
