@@ -665,6 +665,92 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
   </div>
 </div>
 
+<!-- ฟอร์มแก้ไม้ที่บันทึกไปแล้ว — ใช้ได้ทั้งไม้เปิดและไม้ที่ปิดแล้ว
+     ช่องขาออก (ราคาปิด/เวลาปิด/เหตุผล) จะโผล่เฉพาะไม้ที่ปิดแล้วเท่านั้น -->
+<div class="sheet" id="sh-edit" role="dialog" aria-modal="true" aria-label="แก้ไม้">
+  <div class="wrapfix">
+    <button class="close" id="ed-x" aria-label="ปิด">✕</button>
+    <div class="panel">
+      <h2>แก้ไม้</h2>
+      <div class="hint" style="margin-top:2px" id="ed-info"></div>
+
+      <div class="grid2">
+        <div>
+          <label for="ed-sym">สัญลักษณ์</label>
+          <input id="ed-sym" list="symlist" autocomplete="off">
+        </div>
+        <div>
+          <label for="ed-tf">ไทม์เฟรม</label>
+          <input id="ed-tf" autocomplete="off">
+        </div>
+      </div>
+
+      <label>ทิศ</label>
+      <div class="seg" id="ed-side">
+        <button data-v="BUY">BUY</button>
+        <button data-v="SELL">SELL</button>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label for="ed-price">ราคาเข้า *</label>
+          <input id="ed-price" inputmode="decimal" autocomplete="off">
+        </div>
+        <div>
+          <label for="ed-lots">ขนาด (lot)</label>
+          <input id="ed-lots" inputmode="decimal" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label for="ed-tp">TP</label>
+          <input id="ed-tp" inputmode="decimal" autocomplete="off">
+        </div>
+        <div>
+          <label for="ed-sl">SL</label>
+          <input id="ed-sl" inputmode="decimal" autocomplete="off">
+        </div>
+      </div>
+
+      <label for="ed-when">วัน–เวลาที่เข้า</label>
+      <input id="ed-when" type="datetime-local">
+
+      <div id="ed-exit" hidden>
+        <div class="grid2">
+          <div>
+            <label for="ed-xprice">ราคาปิด *</label>
+            <input id="ed-xprice" inputmode="decimal" autocomplete="off">
+          </div>
+          <div>
+            <label for="ed-xwhen">วัน–เวลาที่ปิด</label>
+            <input id="ed-xwhen" type="datetime-local">
+          </div>
+        </div>
+        <label for="ed-reason">เหตุผลที่ปิด</label>
+        <select id="ed-reason">
+          <option value="TP">ชน TP</option>
+          <option value="SL">ชน SL</option>
+          <option value="MANUAL">ปิดเอง</option>
+          <option value="REVERSE">กลับทิศ</option>
+          <option value="SIGNAL">สัญญาณปิด</option>
+        </select>
+        <div class="hint">แก้ไม้ที่ปิดแล้ว ระบบจะคิดกำไร ปฏิทิน และสถิติใหม่ให้ทั้งหมด</div>
+      </div>
+
+      <label for="ed-note">โน้ต</label>
+      <textarea id="ed-note" placeholder="เช่น GTPro โซนล่าง + Bull"></textarea>
+
+      <div class="rr" id="ed-rr"></div>
+      <div class="msg" id="ed-msg"></div>
+      <div class="rowbtns">
+        <button class="btn ghost" id="ed-cancel">ยกเลิก</button>
+        <button class="btn" id="ed-save">บันทึกการแก้ไข</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="pick-img" accept="image/*" hidden>
 
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="รูปชาร์ต">
@@ -677,7 +763,7 @@ input:focus{outline:2px solid var(--equity);outline-offset:1px}
 'use strict';
 const TH_MONTH=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
   'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-const BUILD='2026-09-06.1';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
+const BUILD='2026-09-06.2';        /* เลขบิลด์หน้าเว็บ — ไว้ยืนยันว่าเครื่องได้ของใหม่จริง */
 const LS='gtpro.cfg', LSD='gtpro.data';
 const $=s=>document.querySelector(s);
 
@@ -891,7 +977,7 @@ let lastSyncAt = 0;
 const SYNC_GAP = 20000;      /* เพิ่งดึงไปไม่ถึง 20 วิ ไม่ต้องดึงซ้ำ กันสลับแท็บรัว ๆ */
 
 function sheetOpen(){
-  return ['sh-add','sh-close'].some(id => $('#'+id).classList.contains('on'));
+  return ['sh-add','sh-close','sh-edit'].some(id => $('#'+id).classList.contains('on'));
 }
 function syncOnReturn(){
   if(document.hidden) return;
@@ -1082,6 +1168,7 @@ function renderOpen(){
       </div>
       <div class="act">
         <button class="prim" data-a="close">ปิดไม้</button>
+        <button data-a="edit">✏️ แก้ไข</button>
         <button data-a="img">${t.chart?'🖼 ดูรูป':'🖼 แนบรูป'}</button>
         <button class="danger" data-a="del">ลบ</button>
       </div>
@@ -1140,6 +1227,7 @@ function renderHist(){
       </div>
       ${t.note?`<div class="hint" style="margin-top:6px">${esc(t.note)}</div>`:''}
       <div class="act">
+        <button data-a="edit">✏️ แก้ไข</button>
         <button data-a="img">${t.chart?'🖼 ดูรูปชาร์ต':'🖼 แนบรูป'}</button>
         ${t.chart?'<button data-a="re">เปลี่ยนรูป</button>':''}
       </div>
@@ -1154,6 +1242,7 @@ $('#histList').onclick=async e=>{
   if(item){
     const t=(data.history||[]).find(x=>x.id===item.dataset.id);
     if(t){
+      if(e.target.closest('[data-a="edit"]')) return openEdit(t, true);
       if(e.target.closest('[data-a="re"]')) return askImage(t.id);
       const btn=e.target.closest('[data-a="img"]');
       if(btn){
@@ -1407,6 +1496,112 @@ $('#cl-save').onclick = async () => {
   finally{ btn.disabled=false; btn.textContent='ปิดไม้นี้'; }
 };
 
+/* ══ แก้ไม้ที่บันทึกไปแล้ว ══
+   เดิมกรอกผิดต้องลบแล้วพิมพ์ใหม่ทั้งไม้ และไม้ที่ปิดแล้วก็ลบไม่ได้ด้วย = แก้ไม่ได้เลย
+   ฟอร์มนี้ใช้ตัวเดียวกันทั้งสองแบบ ต่างกันแค่ช่องขาออกจะโผล่เฉพาะไม้ที่ปิดแล้ว */
+let editing = null;
+const getEdSide = segWire('ed-side');
+
+/* 'yyyy-MM-dd HH:mm:ss' (หรือ Date string) → ค่าที่ input[type=datetime-local] รับได้ */
+function dtIn(s){
+  const t = String(s||'').replace(' ','T');
+  return t ? t.slice(0,16) : '';
+}
+
+function openEdit(t, closed){
+  editing = { t, closed };
+  msgHide($('#ed-msg'));
+  const d = t.digits==null?2:t.digits;
+  $('#ed-info').textContent =
+    `รหัส ${t.id} · ${closed?'ปิดแล้ว':'ยังเปิดอยู่'}` + (t.mode==='TEST'?' · 🧪 TEST':'');
+
+  $('#symlist').innerHTML = ((data&&data.symbols)||[])
+    .map(s=>`<option value="${esc(s.symbol)}">`).join('');
+
+  $('#ed-sym').value   = t.symbol||'';
+  $('#ed-tf').value    = t.tf||'';
+  $('#ed-price').value = t.entry!=null ? t.entry : '';
+  $('#ed-lots').value  = t.lots!=null ? t.lots : '';
+  $('#ed-tp').value    = t.tp||'';
+  $('#ed-sl').value    = t.sl||'';
+  $('#ed-when').value  = dtIn(t.entry_time);
+  $('#ed-note').value  = t.note||'';
+  [...$('#ed-side').children].forEach(b=>b.classList.toggle('on', b.dataset.v===t.side));
+
+  $('#ed-exit').hidden = !closed;
+  if(closed){
+    $('#ed-xprice').value = t.exit!=null ? t.exit : '';
+    $('#ed-xwhen').value  = dtIn(t.exit_time);
+    $('#ed-reason').value = ['TP','SL','MANUAL','REVERSE','SIGNAL'].includes(t.reason)
+                            ? t.reason : 'MANUAL';
+  }
+  edRR();
+  $('#sh-edit').classList.add('on');
+}
+function closeEdit(){ $('#sh-edit').classList.remove('on'); }
+
+/* แสดงผลที่จะได้หลังแก้ ให้เห็นก่อนกดบันทึก — ไม้ปิดแล้วโชว์กำไรใหม่ ไม้เปิดโชว์ R:R */
+function edRR(){
+  if(!editing) return;
+  const box=$('#ed-rr');
+  const entry=parseFloat($('#ed-price').value), lots=parseFloat($('#ed-lots').value)||0;
+  const sym=($('#ed-sym').value||'').toUpperCase().trim();
+  const meta=((data&&data.symbols)||[]).find(s=>s.symbol===sym);
+  const vpp=meta?meta.vpp:1, dir=getEdSide()==='BUY'?1:-1;
+  if(!isFinite(entry)){ box.innerHTML=''; return; }
+
+  if(editing.closed){
+    const x=parseFloat($('#ed-xprice').value);
+    if(!isFinite(x)){ box.innerHTML=''; return; }
+    const pts=(x-entry)*dir, usd=pts*vpp*lots;
+    box.innerHTML = `กำไรใหม่ <b class="${cls(usd)}">${sgn(usd,2)} USD</b> ` +
+                    `(<b class="${cls(pts)}">${sgn(pts,2)}</b> จุด)`;
+    return;
+  }
+  const tp=parseFloat($('#ed-tp').value), sl=parseFloat($('#ed-sl').value);
+  if(!isFinite(sl)){ box.innerHTML=''; return; }
+  const risk=Math.abs(entry-sl)*vpp*lots;
+  const rew=isFinite(tp)?Math.abs(tp-entry)*vpp*lots:null;
+  box.innerHTML = `เสี่ยง <b class="dn">${fmt(risk,2)} USD</b>` +
+    (rew!=null?` · ได้ <b class="up">${fmt(rew,2)} USD</b> · R:R <b>1:${fmt(rew/risk,2)}</b>`:'');
+}
+['ed-price','ed-tp','ed-sl','ed-lots','ed-sym','ed-xprice'].forEach(id=>$('#'+id).oninput=edRR);
+$('#ed-side').addEventListener('click', ()=>setTimeout(edRR,0));
+
+$('#ed-x').onclick = $('#ed-cancel').onclick = closeEdit;
+$('#sh-edit').onclick = e => { if(e.target.id==='sh-edit') closeEdit(); };
+
+$('#ed-save').onclick = async () => {
+  const btn=$('#ed-save'), m=$('#ed-msg');
+  if(!editing) return;
+  if(!$('#ed-sym').value.trim())   return msg(m,'ยังไม่ได้กรอกสัญลักษณ์',false);
+  if(!$('#ed-price').value.trim()) return msg(m,'ยังไม่ได้กรอกราคาเข้า',false);
+  if(editing.closed && !$('#ed-xprice').value.trim())
+    return msg(m,'ไม้ที่ปิดแล้วต้องมีราคาปิด',false);
+
+  btn.disabled=true; btn.textContent='กำลังบันทึก…'; msgHide(m);
+  try{
+    const q = {
+      act:'edit', id:editing.t.id,
+      symbol:$('#ed-sym').value.trim(), tf:$('#ed-tf').value.trim(), side:getEdSide(),
+      price:$('#ed-price').value.trim(), lots:$('#ed-lots').value.trim(),
+      tp:$('#ed-tp').value.trim(), sl:$('#ed-sl').value.trim(),
+      when:dtOut($('#ed-when').value), note:$('#ed-note').value.trim()
+    };
+    if(editing.closed){
+      q.exit_price = $('#ed-xprice').value.trim();
+      q.exit_when  = dtOut($('#ed-xwhen').value);
+      q.reason     = $('#ed-reason').value;
+    }
+    const r = await apiAct(q);
+    if(!r || r.ok===false) throw new Error((r&&r.error)||'แก้ไม่สำเร็จ');
+    msg(m,'แก้แล้ว ✓ '+(r.result||''),true);
+    if(!applyData(r.data)) await refresh();
+    setTimeout(closeEdit, 700);
+  }catch(err){ msg(m,'ผิดพลาด: '+err.message,false); }
+  finally{ btn.disabled=false; btn.textContent='บันทึกการแก้ไข'; }
+};
+
 /* ── แนบรูปให้ไม้ที่บันทึกไปแล้ว (ใช้ได้ทั้งไม้เปิดและไม้ที่ปิดแล้ว) ── */
 let attachTo = null;
 function askImage(tradeId){ attachTo = tradeId; $('#pick-img').value=''; $('#pick-img').click(); }
@@ -1447,6 +1642,7 @@ $('#openList').onclick = async e => {
   const t = (data.open||[]).find(x=>x.id===row.dataset.id); if(!t) return;
 
   if(e.target.closest('[data-a="close"]')) return openClose(t);
+  if(e.target.closest('[data-a="edit"]'))  return openEdit(t, false);
   if(e.target.closest('[data-a="img"]')){
     const btn = e.target.closest('[data-a="img"]');
     if(!t.chart) return askImage(t.id);

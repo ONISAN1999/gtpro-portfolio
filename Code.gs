@@ -1752,6 +1752,7 @@ function doGet(e) {
     if (p.act === 'add')    return jsonOut_(withData_(apiAddTrade_(p), p), p.callback);
     if (p.act === 'close')  return jsonOut_(withData_(apiCloseTrade_(p), p), p.callback);
     if (p.act === 'delete') return jsonOut_(withData_(apiDeleteTrade_(p), p), p.callback);
+    if (p.act === 'edit')   return jsonOut_(withData_(apiEditTrade_(p), p), p.callback);
     // news_at = เวลาที่ดึงจาก ForexFactory สำเร็จครั้งล่าสุด แอปเอาไปโชว์ให้เห็นว่าสดแค่ไหน
     if (p.act === 'news')   return jsonOut_({ ok: true, news: newsForApp_(),
                                               news_at: newsFetchedAt_() }, p.callback);
@@ -2058,6 +2059,121 @@ function apiCloseTrade_(p) {
     }
     closeTrade_(t, px, String(p.reason || 'MANUAL'), '', String(p.when || '').trim());
     return { ok: true, id: id };
+  } finally { lock.releaseLock(); }
+}
+
+/**
+ * แก้ไม้ที่บันทึกไปแล้ว
+ *   ?act=edit&id=T2609..&symbol=..&tf=..&side=..&lots=..&when=..&price=..&tp=..&sl=..&note=..
+ *   ไม้ที่ปิดแล้วส่ง exit_price / exit_when / reason เพิ่มได้ด้วย
+ *
+ * ทำไมต้องมี: เดิมกรอกผิดต้องลบแล้วพิมพ์ใหม่ทั้งไม้ (และลบได้เฉพาะไม้ที่ยังเปิด
+ * ไม้ที่ปิดแล้วแก้ไม่ได้เลย) เสียเวลาและเสี่ยงพิมพ์ผิดซ้ำ
+ *
+ * ส่งมาเฉพาะฟิลด์ที่จะแก้ — ฟิลด์ที่ไม่ส่งมาจะไม่แตะ
+ * ส่งมาเป็นค่าว่างถือว่า "ล้างค่า" (ใช้ลบ TP/SL ที่ใส่ผิดออก)
+ *
+ * แก้ไม้ที่ปิดแล้ว = กำไร/ปฏิทิน/สถิติเปลี่ยนตาม จึงคำนวณกำไรของไม้นั้นใหม่
+ * แล้วเรียก rebuildAll() ให้ Daily_PL กับ Stats ตรงกับความจริงเสมอ
+ */
+function apiEditTrade_(p) {
+  var id = String(p.id || '').trim();
+  if (!id) return { ok: false, error: 'ไม่ได้ระบุรหัสไม้' };
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(20000); } catch (e) {
+    return { ok: false, error: 'ระบบกำลังประมวลผลอย่างอื่นอยู่' };
+  }
+  try {
+    var sh  = ss().getSheetByName(SHEETS.TRADES);
+    var row = tradeRowById_(id);
+    if (!row) return { ok: false, error: 'ไม่พบไม้รหัส ' + id };
+
+    var W = HEADERS.TRADES.length;
+    var v = sh.getRange(row, 1, 1, W).getValues()[0];
+    var isClosed = String(v[17]) === 'CLOSED';
+
+    var has = function (k) { return p[k] !== undefined && p[k] !== null; };
+    /** ค่าตัวเลขที่ลบทิ้งได้ — ส่งค่าว่างมา = ล้างช่องนั้น */
+    var optNum = function (k) {
+      var s = String(p[k]).trim();
+      if (s === '') return '';
+      var n = toNum(s);
+      return (n === null) ? undefined : n;      // undefined = ค่าที่ส่งมาอ่านไม่ออก
+    };
+    /** วันเวลาต้องอ่านออกจริง ไม่งั้น parseDate_ จะเงียบ ๆ แทนด้วยเวลาปัจจุบัน
+        แล้วไม้ backtest จะเด้งไปโผล่วันนี้โดยไม่มีใครรู้ */
+    var okDate = function (s) {
+      return !isNaN(new Date(String(s).replace(' ', 'T')).getTime());
+    };
+
+    if (has('symbol')) {
+      var sym = String(p.symbol).toUpperCase().trim();
+      if (!sym) return { ok: false, error: 'สัญลักษณ์ว่างไม่ได้' };
+      v[1] = sym;
+    }
+    if (has('tf')) v[2] = String(p.tf).trim();
+    if (has('side')) {
+      var side = detectAction(String(p.side));
+      if (side !== 'BUY' && side !== 'SELL') {
+        return { ok: false, error: 'ทิศต้องเป็น BUY หรือ SELL' };
+      }
+      v[3] = side;
+    }
+    if (has('lots')) {
+      var lots = toNum(p.lots);
+      if (lots === null || lots <= 0) return { ok: false, error: 'ขนาดไม้ต้องมากกว่า 0' };
+      v[4] = lots;
+    }
+    if (has('when')) {
+      var w = String(p.when).trim();
+      if (!w || !okDate(w)) return { ok: false, error: 'วันเวลาที่เข้าอ่านไม่ออก' };
+      v[5] = w;
+    }
+    if (has('price')) {
+      var entry = toNum(p.price);
+      if (entry === null) return { ok: false, error: 'ราคาเข้าต้องเป็นตัวเลข' };
+      v[6] = entry;
+    }
+    if (has('tp')) { var tp = optNum('tp'); if (tp === undefined) return { ok:false, error:'TP ต้องเป็นตัวเลข' }; v[7] = tp; }
+    if (has('sl')) { var sl = optNum('sl'); if (sl === undefined) return { ok:false, error:'SL ต้องเป็นตัวเลข' }; v[8] = sl; }
+    if (has('mode')) v[20] = normMode(p.mode);
+    if (has('note')) v[22] = String(p.note);
+
+    if (isClosed) {
+      if (has('exit_price')) {
+        var xp = toNum(p.exit_price);
+        if (xp === null) return { ok: false, error: 'ราคาปิดต้องเป็นตัวเลข' };
+        v[10] = xp;
+      }
+      if (has('exit_when')) {
+        var xw = String(p.exit_when).trim();
+        if (!xw || !okDate(xw)) return { ok: false, error: 'วันเวลาที่ปิดอ่านไม่ออก' };
+        v[9] = xw;
+      }
+      if (has('reason')) v[11] = String(p.reason).toUpperCase().trim() || 'MANUAL';
+
+      // คำนวณกำไรของไม้นี้ใหม่จากค่าที่แก้แล้ว (สูตรเดียวกับตอนปิดไม้)
+      var map = symbolMap_(String(v[1]));
+      var pn  = computePnl(String(v[3]), Number(v[6]), Number(v[10]),
+                           Number(v[4]), map.value_per_point, v[8]);
+      v[12] = round_(pn.pts, 5);
+      v[13] = round_(pn.pct, 4);
+      v[14] = round_(pn.usd, 2);
+      v[15] = (pn.r === null ? '' : round_(pn.r, 3));
+      var mins = Math.round((parseDate_(v[9]) - parseDate_(v[5])) / 60000);
+      v[16] = (mins < 0 ? 0 : mins);
+    } else if (has('exit_price') || has('exit_when') || has('reason')) {
+      return { ok: false, error: 'ไม้นี้ยังไม่ปิด แก้ข้อมูลขาออกไม่ได้' };
+    }
+
+    sh.getRange(row, 1, 1, W).setValues([v]);
+
+    // ตัวเลขของไม้ที่ปิดแล้วเปลี่ยน → ปฏิทินกับสถิติต้องคิดใหม่ ไม่งั้นตัวเลขจะขัดกันเอง
+    if (isClosed) rebuildAll();
+
+    return { ok: true, id: id, closed: isClosed,
+             result: 'แก้ไม้ ' + id + ' แล้ว' + (isClosed ? ' (คิดสถิติใหม่)' : '') };
   } finally { lock.releaseLock(); }
 }
 
